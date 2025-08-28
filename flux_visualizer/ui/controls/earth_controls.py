@@ -1,3 +1,4 @@
+# flux_visualizer/ui/controls/earth_controls.py
 """
 Earth visualization controls for STRATOS
 """
@@ -15,7 +16,9 @@ class EarthControlsWidget(QWidget):
     # Signals
     opacity_changed = pyqtSignal(int)
     grid_toggled = pyqtSignal(bool)
-    reset_camera = pyqtSignal()
+    orbital_paths_toggled = pyqtSignal(bool)
+    trails_toggled = pyqtSignal(bool)
+    satellite_size_changed = pyqtSignal(int)
     
     def __init__(self, config, parent=None):
         """Initialize Earth controls"""
@@ -27,20 +30,28 @@ class EarthControlsWidget(QWidget):
         """Setup the controls UI"""
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 5, 10, 5)
+        layout.setSpacing(15)  # More spacing between elements
         
         # Earth opacity slider
-        layout.addWidget(QLabel("Earth Opacity:"))
+        earth_label = QLabel("Earth Opacity:")
+        earth_label.setStyleSheet("color: #999; font-size: 12px;")
+        layout.addWidget(earth_label)
         
         self.earth_opacity_slider = QSlider(Qt.Orientation.Horizontal)
         self.earth_opacity_slider.setRange(0, 100)
         self.earth_opacity_slider.setValue(int(self.config.EARTH_DEFAULT_OPACITY * 100))
-        self.earth_opacity_slider.setMaximumWidth(150)
+        self.earth_opacity_slider.setMaximumWidth(100)
         self.earth_opacity_slider.valueChanged.connect(self._on_opacity_changed)
         layout.addWidget(self.earth_opacity_slider)
         
         self.earth_opacity_label = QLabel(f"{int(self.config.EARTH_DEFAULT_OPACITY * 100)}%")
-        self.earth_opacity_label.setMinimumWidth(40)
+        self.earth_opacity_label.setStyleSheet("color: white; font-size: 12px; min-width: 35px;")
         layout.addWidget(self.earth_opacity_label)
+        
+        # Separator
+        separator1 = QLabel("|")
+        separator1.setStyleSheet("color: #444; font-size: 16px;")
+        layout.addWidget(separator1)
         
         # Grid checkbox
         self.grid_checkbox = QCheckBox("Show Lat/Long Grid")
@@ -48,35 +59,93 @@ class EarthControlsWidget(QWidget):
         self.grid_checkbox.stateChanged.connect(self._on_grid_toggled)
         layout.addWidget(self.grid_checkbox)
         
-        # Reset camera button
-        self.reset_camera_button = QPushButton("Reset Camera")
-        self.reset_camera_button.setMaximumWidth(100)
-        self.reset_camera_button.clicked.connect(self.reset_camera.emit)
-        layout.addWidget(self.reset_camera_button)
+        # Hide orbital paths checkbox
+        self.hide_orbital_paths = QCheckBox("Hide Orbital Paths")
+        self.hide_orbital_paths.setChecked(False)
+        self.hide_orbital_paths.stateChanged.connect(self._on_orbital_paths_toggled)
+        layout.addWidget(self.hide_orbital_paths)
+        
+        # Show trails checkbox
+        self.show_trails = QCheckBox("Show Trails")
+        self.show_trails.setChecked(True)
+        self.show_trails.stateChanged.connect(self._on_trails_toggled)
+        layout.addWidget(self.show_trails)
+        
+        # Separator
+        separator2 = QLabel("|")
+        separator2.setStyleSheet("color: #444; font-size: 16px;")
+        layout.addWidget(separator2)
+        
+        # Satellite size slider
+        sat_label = QLabel("Satellite Size:")
+        sat_label.setStyleSheet("color: #999; font-size: 12px;")
+        layout.addWidget(sat_label)
+        
+        self.satellite_size_slider = QSlider(Qt.Orientation.Horizontal)
+        self.satellite_size_slider.setRange(100, 2000)
+        self.satellite_size_slider.setValue(500)
+        self.satellite_size_slider.setMaximumWidth(80)
+        self.satellite_size_slider.valueChanged.connect(self._on_satellite_size_changed)
+        layout.addWidget(self.satellite_size_slider)
+        
+        self.satellite_size_label = QLabel("500km")
+        self.satellite_size_label.setStyleSheet("color: white; font-size: 12px; min-width: 50px;")
+        layout.addWidget(self.satellite_size_label)
         
         layout.addStretch()
         
-        # Apply styling
+        # Apply flat styling without box
         self.setStyleSheet("""
             QWidget {
-                background-color: rgba(50, 50, 50, 180);
-                border: 1px solid #666;
-                border-radius: 5px;
+                background-color: #1e1e1e;
+                border: none;
             }
-            QLabel, QCheckBox {
+            QCheckBox {
+                color: #cccccc;
+                font-size: 12px;
+                spacing: 5px;
+            }
+            QCheckBox:hover {
                 color: white;
             }
-            QPushButton {
-                background-color: rgba(70, 70, 70, 200);
-                color: white;
-                border: 1px solid #888;
+            QCheckBox::indicator {
+                width: 14px;
+                height: 14px;
                 border-radius: 3px;
-                padding: 3px 10px;
+                border: 1px solid #555;
+                background-color: #2a2a2a;
             }
-            QPushButton:hover {
-                background-color: rgba(90, 90, 90, 200);
+            QCheckBox::indicator:checked {
+                background-color: #4CAF50;
+                border: 1px solid #45a049;
+            }
+            QCheckBox::indicator:hover {
+                border: 1px solid #888;
+            }
+            QSlider::groove:horizontal {
+                height: 4px;
+                background: #3a3a3a;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: #666;
+                border: 1px solid #555;
+                width: 14px;
+                height: 14px;
+                margin: -5px 0;
+                border-radius: 7px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: #888;
+                border: 1px solid #999;
+            }
+            QSlider::sub-page:horizontal {
+                background: #4CAF50;
+                border-radius: 2px;
             }
         """)
+        
+        self.setFixedHeight(30)  # Slightly smaller height
     
     def _on_opacity_changed(self, value):
         """Handle opacity slider change"""
@@ -85,7 +154,22 @@ class EarthControlsWidget(QWidget):
     
     def _on_grid_toggled(self, state):
         """Handle grid checkbox toggle"""
-        self.grid_toggled.emit(state == 2)  # Qt.Checked = 2
+        self.grid_toggled.emit(state == 2)
+    
+    def _on_orbital_paths_toggled(self, state):
+        """Handle orbital paths checkbox toggle"""
+        hide_paths = state == 2
+        show_paths = not hide_paths
+        self.orbital_paths_toggled.emit(show_paths)
+    
+    def _on_trails_toggled(self, state):
+        """Handle trails checkbox toggle"""
+        self.trails_toggled.emit(state == 2)
+    
+    def _on_satellite_size_changed(self, value):
+        """Handle satellite size slider change"""
+        self.satellite_size_label.setText(f"{value}km")
+        self.satellite_size_changed.emit(value)
     
     def get_opacity(self):
         """Get current opacity value (0-100)"""
@@ -94,3 +178,15 @@ class EarthControlsWidget(QWidget):
     def is_grid_enabled(self):
         """Check if grid is enabled"""
         return self.grid_checkbox.isChecked()
+    
+    def are_orbital_paths_visible(self):
+        """Check if orbital paths are visible"""
+        return not self.hide_orbital_paths.isChecked()
+    
+    def are_trails_visible(self):
+        """Check if trails are visible"""
+        return self.show_trails.isChecked()
+    
+    def get_satellite_size(self):
+        """Get current satellite size in km"""
+        return self.satellite_size_slider.value()

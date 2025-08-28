@@ -167,8 +167,8 @@ class Config:
     # ============================================
     
     # Main window
-    MAIN_WINDOW_WIDTH = 1200
-    MAIN_WINDOW_HEIGHT = 800
+    MAIN_WINDOW_WIDTH = 1600
+    MAIN_WINDOW_HEIGHT = 900
     MAIN_WINDOW_START_X = 100
     MAIN_WINDOW_START_Y = 100
     
@@ -177,8 +177,8 @@ class Config:
     CONTROL_PANEL_MAX_WIDTH = 450
     
     # Splitter sizes
-    VTK_WIDGET_DEFAULT_WIDTH = 750
-    CONTROL_PANEL_DEFAULT_WIDTH = 450
+    VTK_WIDGET_DEFAULT_WIDTH = 700
+    CONTROL_PANEL_DEFAULT_WIDTH = 900
     
     # Plot windows
     SLICE_WINDOW_WIDTH = 800
@@ -187,6 +187,12 @@ class Config:
     SPECTRUM_WINDOW_HEIGHT = 500
     FLUX_TIME_WINDOW_WIDTH = 600
     FLUX_TIME_WINDOW_HEIGHT = 400
+
+    # Camera Configuration
+    CAMERA_DEFAULT_DISTANCE = 30000  # Default distance in km when no data is loaded
+    CAMERA_DEFAULT_POSITION = (20000, 20000, 10000)  # Will be scaled based on data
+    CAMERA_DEFAULT_FOCAL_POINT = (0, 0, 0)
+    CAMERA_DEFAULT_VIEW_UP = (0, 0, 1)
     
     # ============================================
     # VTK RENDERING PARAMETERS

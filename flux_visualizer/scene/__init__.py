@@ -1,9 +1,13 @@
 # scene/__init__.py
 """
-Scene module for Flux Orbital Visualizer
-Handles 3D scene components including Earth, satellites, and orbital paths
+Scene components for STRATOS
 """
 
 from .earth_renderer import EarthRenderer
+from .orbital_renderer import OrbitalRenderer, SatelliteRenderer
 
-__all__ = ['EarthRenderer']
+__all__ = [
+    'EarthRenderer',
+    'OrbitalRenderer', 
+    'SatelliteRenderer',
+]

@@ -16,7 +16,7 @@ from config import Config
 from core import OrbitalPoint
 from data_io import VTKDataLoader, OrbitalDataLoader
 from visualization import ColorManager
-from scene import EarthRenderer
+from scene import EarthRenderer, OrbitalRenderer, SatelliteRenderer
 from analysis import FluxAnalyzer
 
 # Import UI components
@@ -57,10 +57,17 @@ class ElectronFluxVisualizerApp(QMainWindow):
         
         # Setup VTK
         self._setup_vtk()
+
+        # Setup axes widget
+        self._setup_axes_widget()
         
         # Setup Earth
         self.earth_renderer = EarthRenderer(self.renderer)
         self.earth_renderer.create_earth()
+        
+        # ADDED: Setup orbital and satellite renderers
+        self.orbital_renderer = OrbitalRenderer(self.renderer)
+        self.satellite_renderer = SatelliteRenderer(self.renderer)
         
         # Animation timer
         self.animation_timer = QTimer(self)
@@ -97,8 +104,22 @@ class ElectronFluxVisualizerApp(QMainWindow):
         vtk_frame = QWidget()
         vtk_layout = QVBoxLayout(vtk_frame)
         
-        self.vtk_widget = QVTKRenderWindowInteractor(vtk_frame)
-        vtk_layout.addWidget(self.vtk_widget)
+        # Create a container for VTK widget with overlay buttons
+        vtk_container = QWidget()
+        vtk_container_layout = QVBoxLayout(vtk_container)
+        vtk_container_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.vtk_widget = QVTKRenderWindowInteractor(vtk_container)
+        vtk_container_layout.addWidget(self.vtk_widget)
+
+        # Create view buttons overlay - NEW
+        self._create_view_buttons_overlay()
+
+        vtk_layout.addWidget(vtk_container)
+
+        # Earth controls below VTK widget (will be updated for flat style)
+        self.earth_controls = EarthControlsWidget(self.config)
+        vtk_layout.addWidget(self.earth_controls)
         
         # Earth controls below VTK widget
         self.earth_controls = EarthControlsWidget(self.config)
@@ -117,7 +138,101 @@ class ElectronFluxVisualizerApp(QMainWindow):
             self.config.VTK_WIDGET_DEFAULT_WIDTH,
             self.config.CONTROL_PANEL_DEFAULT_WIDTH
         ])
-    
+
+    def _create_view_buttons_overlay(self):
+        """Create view buttons overlaid on VTK widget"""
+        from PyQt6.QtWidgets import QPushButton
+
+        # Create container widget for buttons
+        self.view_buttons_widget = QWidget(self.vtk_widget)
+        self.view_buttons_widget.setGeometry(10, 10, 150, 35)
+
+        # Create horizontal layout
+        layout = QHBoxLayout(self.view_buttons_widget)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(5)
+
+        # Create view label
+        view_label = QLabel("View:")
+        view_label.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-weight: bold;
+                background-color: transparent;
+            }
+        """)
+        layout.addWidget(view_label)
+
+        # X button (red like X axis)
+        self.view_x_button = QPushButton("X")
+        self.view_x_button.setMaximumSize(25, 25)
+        self.view_x_button.clicked.connect(self._snap_to_x_axis)
+        self.view_x_button.setToolTip("View YZ plane (from X axis)")
+        self.view_x_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(200, 50, 50, 180);
+                color: white;
+                border: 1px solid white;
+                border-radius: 3px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 70, 70, 200);
+            }
+        """)
+        layout.addWidget(self.view_x_button)
+
+        # Y button (green like Y axis)
+        self.view_y_button = QPushButton("Y")
+        self.view_y_button.setMaximumSize(25, 25)
+        self.view_y_button.clicked.connect(self._snap_to_y_axis)
+        self.view_y_button.setToolTip("View XZ plane (from Y axis)")
+        self.view_y_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(50, 200, 50, 180);
+                color: white;
+                border: 1px solid white;
+                border-radius: 3px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: rgba(70, 255, 70, 200);
+            }
+        """)
+        layout.addWidget(self.view_y_button)
+
+        # Z button (blue like Z axis)
+        self.view_z_button = QPushButton("Z")
+        self.view_z_button.setMaximumSize(25, 25)
+        self.view_z_button.clicked.connect(self._snap_to_z_axis)
+        self.view_z_button.setToolTip("View XY plane (from Z axis)")
+        self.view_z_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(50, 50, 200, 180);
+                color: white;
+                border: 1px solid white;
+                border-radius: 3px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: rgba(70, 70, 255, 200);
+            }
+        """)
+        layout.addWidget(self.view_z_button)
+
+        layout.addStretch()
+
+        # Style the container
+        self.view_buttons_widget.setStyleSheet("""
+            QWidget {
+                background-color: rgba(30, 30, 30, 150);
+                border-radius: 5px;
+            }
+        """)
+
+        # Make sure buttons are on top
+        self.view_buttons_widget.raise_()
+        
     def _create_control_panel(self):
         """Create the main control panel"""
         panel = QWidget()
@@ -160,6 +275,27 @@ class ElectronFluxVisualizerApp(QMainWindow):
         layout.addStretch()
         
         return panel
+
+    def _setup_axes_widget(self):
+        """Setup coordinate axes widget in corner"""
+        # Create axes actor
+        self.axes_actor = vtk.vtkAxesActor()
+
+        # Set axis labels
+        self.axes_actor.SetXAxisLabelText("X")
+        self.axes_actor.SetYAxisLabelText("Y")
+        self.axes_actor.SetZAxisLabelText("Z")
+
+        # Set axis lengths
+        self.axes_actor.SetTotalLength(1.0, 1.0, 1.0)
+
+        # Create orientation widget
+        self.orientation_widget = vtk.vtkOrientationMarkerWidget()
+        self.orientation_widget.SetOrientationMarker(self.axes_actor)
+        self.orientation_widget.SetInteractor(self.vtk_widget)
+        self.orientation_widget.SetViewport(0.0, 0.0, 0.15, 0.15)  # Bottom left corner
+        self.orientation_widget.EnabledOn()
+        self.orientation_widget.InteractiveOff()  # Don't allow user to move it
     
     def _setup_vtk(self):
         """Setup VTK rendering pipeline"""
@@ -200,13 +336,72 @@ class ElectronFluxVisualizerApp(QMainWindow):
         
         # Analysis panel
         self.analysis_panel.settings_changed.connect(self._on_analysis_settings_changed)
-        # Connect analysis window buttons when implemented
         
         # Earth controls
         self.earth_controls.opacity_changed.connect(self._update_earth_opacity)
         self.earth_controls.grid_toggled.connect(self._toggle_grid)
-        self.earth_controls.reset_camera.connect(self._reset_camera)
-    
+        self.earth_controls.orbital_paths_toggled.connect(self._toggle_orbital_paths)
+        self.earth_controls.trails_toggled.connect(self._toggle_trails)
+        self.earth_controls.satellite_size_changed.connect(self._update_satellite_size)
+
+    def _update_satellite_size(self, size_km):
+        """Update size of all satellites"""
+        if hasattr(self, 'satellite_renderer'):
+            self.satellite_renderer.update_all_satellite_sizes(size_km)
+            self.vtk_widget.GetRenderWindow().Render()
+
+    def _calculate_optimal_camera_distance(self):
+        """Calculate optimal camera distance based on loaded data"""
+        max_distance = self.config.CAMERA_DEFAULT_DISTANCE if hasattr(self.config, 'CAMERA_DEFAULT_DISTANCE') else 30000
+
+        # Check orbital data bounds
+        if self.orbital_data_dict:
+            for orbital_data in self.orbital_data_dict.values():
+                for point in orbital_data:
+                    distance = np.sqrt(point.x**2 + point.y**2 + point.z**2)
+                    max_distance = max(max_distance, distance)
+
+        # Check VTK data bounds
+        if self.vtk_data_dict:
+            for vtk_data in self.vtk_data_dict.values():
+                bounds = vtk_data.GetBounds()
+                data_max = max(
+                    abs(bounds[0]), abs(bounds[1]),
+                    abs(bounds[2]), abs(bounds[3]),
+                    abs(bounds[4]), abs(bounds[5])
+                )
+                max_distance = max(max_distance, data_max)
+
+        # Add 50% margin for comfortable viewing
+        return max_distance * 1.5
+
+    def _snap_to_x_axis(self):
+        """Snap camera to view YZ plane from X axis"""
+        distance = self._calculate_optimal_camera_distance()
+        self.camera.SetPosition(distance, 0, 0)
+        self.camera.SetFocalPoint(0, 0, 0)
+        self.camera.SetViewUp(0, 0, 1)  # Z is up
+        self.renderer.ResetCameraClippingRange()
+        self.vtk_widget.GetRenderWindow().Render()
+
+    def _snap_to_y_axis(self):
+        """Snap camera to view XZ plane from Y axis"""
+        distance = self._calculate_optimal_camera_distance()
+        self.camera.SetPosition(0, distance, 0)
+        self.camera.SetFocalPoint(0, 0, 0)
+        self.camera.SetViewUp(0, 0, 1)  # Z is up
+        self.renderer.ResetCameraClippingRange()
+        self.vtk_widget.GetRenderWindow().Render()
+
+    def _snap_to_z_axis(self):
+        """Snap camera to view XY plane from Z axis"""
+        distance = self._calculate_optimal_camera_distance()
+        self.camera.SetPosition(0, 0, distance)
+        self.camera.SetFocalPoint(0, 0, 0)
+        self.camera.SetViewUp(0, 1, 0)  # Y is up
+        self.renderer.ResetCameraClippingRange()
+        self.vtk_widget.GetRenderWindow().Render()
+        
     def _load_flux_files(self):
         """Load one or more VTK flux files"""
         file_filter = VTKDataLoader.get_file_filter()
@@ -378,7 +573,7 @@ class ElectronFluxVisualizerApp(QMainWindow):
             QMessageBox.critical(self, "Error", f"Failed to load orbit:\n{str(e)}")
     
     def _remove_orbital_file(self, file_path):
-        """Remove an orbital file"""
+        """Remove an orbital file - UPDATED TO USE NEW RENDERERS"""
         if file_path in self.loaded_orbital_files:
             # Remove widget
             widget = self.loaded_orbital_files[file_path]
@@ -389,8 +584,9 @@ class ElectronFluxVisualizerApp(QMainWindow):
             del self.loaded_orbital_files[file_path]
             del self.orbital_data_dict[file_path]
             
-            # Remove actors
-            self._remove_orbital_actors(file_path)
+            # UPDATED: Use new renderers to remove
+            self.orbital_renderer.remove_path(file_path)
+            self.satellite_renderer.remove_satellite(file_path)
             
             # Update time slider
             if len(self.loaded_orbital_files) == 0:
@@ -405,21 +601,6 @@ class ElectronFluxVisualizerApp(QMainWindow):
                 self.status_label.setText("Ready - Load flux and orbital files")
             
             self.vtk_widget.GetRenderWindow().Render()
-    
-    def _remove_orbital_actors(self, file_path):
-        """Remove orbital visualization actors"""
-        path_actor_key = f"path_actor_{file_path}"
-        sat_actor_key = f"satellite_actor_{file_path}"
-        
-        if hasattr(self, path_actor_key):
-            actor = getattr(self, path_actor_key)
-            self.renderer.RemoveActor(actor)
-            delattr(self, path_actor_key)
-        
-        if hasattr(self, sat_actor_key):
-            actor = getattr(self, sat_actor_key)
-            self.renderer.RemoveActor(actor)
-            delattr(self, sat_actor_key)
     
     def _update_visualization(self):
         """Update field visualization for all loaded files"""
@@ -491,11 +672,7 @@ class ElectronFluxVisualizerApp(QMainWindow):
     
     def _update_orbital_visualization(self):
         """Update orbital visualization for all loaded files"""
-        # Remove all existing orbital actors
-        for file_path in list(self.orbital_data_dict.keys()):
-            self._remove_orbital_actors(file_path)
-        
-        # Create actors for checked files
+        # Clear and recreate all orbital visualizations
         for file_path, file_widget in self.loaded_orbital_files.items():
             if file_widget.is_checked():
                 self._create_orbital_visualization_for_file(file_path, file_widget)
@@ -520,63 +697,15 @@ class ElectronFluxVisualizerApp(QMainWindow):
         }
         color = color_map.get(color_name, (1.0, 1.0, 0.0))
         
-        # Create path polyline
-        points = vtk.vtkPoints()
-        for point in orbital_data:
-            points.InsertNextPoint(point.x, point.y, point.z)
+        self.orbital_renderer.create_orbital_path(orbital_data, color, file_path)
         
-        polyline = vtk.vtkPolyLine()
-        polyline.GetPointIds().SetNumberOfIds(len(orbital_data))
-        for i in range(len(orbital_data)):
-            polyline.GetPointIds().SetId(i, i)
-        
-        cells = vtk.vtkCellArray()
-        cells.InsertNextCell(polyline)
-        
-        polydata = vtk.vtkPolyData()
-        polydata.SetPoints(points)
-        polydata.SetLines(cells)
-        
-        mapper = vtk.vtkPolyDataMapper()
-        mapper.SetInputData(polydata)
-        
-        path_actor = vtk.vtkActor()
-        path_actor.SetMapper(mapper)
-        path_actor.GetProperty().SetColor(color)
-        path_actor.GetProperty().SetLineWidth(2.0)
-        
-        # Store actor reference
-        path_actor_key = f"path_actor_{file_path}"
-        setattr(self, path_actor_key, path_actor)
-        self.renderer.AddActor(path_actor)
-        
-        # Create satellite sphere
-        sphere = vtk.vtkSphereSource()
-        sphere.SetRadius(500.0)  # 500 km for visibility
-        sphere.SetThetaResolution(16)
-        sphere.SetPhiResolution(16)
-        
-        sphere_mapper = vtk.vtkPolyDataMapper()
-        sphere_mapper.SetInputConnection(sphere.GetOutputPort())
-        
-        satellite_actor = vtk.vtkActor()
-        satellite_actor.SetMapper(sphere_mapper)
-        # Use slightly darker version of path color for satellite
-        satellite_actor.GetProperty().SetColor(
-            color[0] * 0.7, 
-            color[1] * 0.7, 
-            color[2] * 0.7
-        )
-        
-        # Set initial position
         if orbital_data:
             first_point = orbital_data[0]
-            satellite_actor.SetPosition(first_point.x, first_point.y, first_point.z)
-        
-        # Store actor reference
-        sat_actor_key = f"satellite_actor_{file_path}"
-        setattr(self, sat_actor_key, satellite_actor)
-        self.renderer.AddActor(satellite_actor)
+            initial_position = (first_point.x, first_point.y, first_point.z)
+            sat_color = (color[0] * 0.7, color[1] * 0.7, color[2] * 0.7)
+            self.satellite_renderer.create_satellite(
+                initial_position, sat_color, 500.0, file_path
+            )
     
     def _update_earth_opacity(self, value):
         """Update Earth opacity"""
@@ -589,9 +718,40 @@ class ElectronFluxVisualizerApp(QMainWindow):
         self.earth_renderer.toggle_grid(enabled)
         self.vtk_widget.GetRenderWindow().Render()
     
+    def _toggle_orbital_paths(self, visible):
+        """Toggle orbital path visibility"""
+        self.orbital_renderer.toggle_visibility(visible)
+        self.vtk_widget.GetRenderWindow().Render()
+    
+    def _toggle_trails(self, visible):
+        """Toggle satellite trail visibility"""
+        self.satellite_renderer.toggle_trail_visibility(visible)
+        self.vtk_widget.GetRenderWindow().Render()
+    
     def _reset_camera(self):
-        """Reset camera to default position"""
-        self.camera.SetPosition(*self.config.CAMERA_DEFAULT_POSITION)
+        """Reset camera to default position - also make it dynamic"""
+        distance = self._calculate_optimal_camera_distance()
+
+        # Use config for angles if available, otherwise default
+        if hasattr(self.config, 'CAMERA_DEFAULT_POSITION'):
+            # Scale the default position by the calculated distance
+            default_pos = self.config.CAMERA_DEFAULT_POSITION
+            default_distance = np.sqrt(sum(x**2 for x in default_pos))
+            scale_factor = distance / default_distance if default_distance > 0 else 1.0
+
+            self.camera.SetPosition(
+                default_pos[0] * scale_factor,
+                default_pos[1] * scale_factor,
+                default_pos[2] * scale_factor
+            )
+        else:
+            # Default isometric view
+            self.camera.SetPosition(
+                distance * 0.7,
+                distance * 0.7,
+                distance * 0.5
+            )
+
         self.camera.SetFocalPoint(*self.config.CAMERA_DEFAULT_FOCAL_POINT)
         self.camera.SetViewUp(*self.config.CAMERA_DEFAULT_VIEW_UP)
         self.renderer.ResetCameraClippingRange()
@@ -621,6 +781,10 @@ class ElectronFluxVisualizerApp(QMainWindow):
         self.is_playing = False
         self.animation_timer.stop()
         self.current_time_index = 0
+        
+        # ADDED: Clear all trails when stopping
+        self.satellite_renderer.clear_all_trails()
+        
         self._update_satellite_positions()
         
         self.animation_panel.set_animation_playing(False)
@@ -633,6 +797,8 @@ class ElectronFluxVisualizerApp(QMainWindow):
             
             if self.current_time_index >= max_length - 1:
                 self.current_time_index = 0
+                # ADDED: Clear trails when looping
+                self.satellite_renderer.clear_all_trails()
             else:
                 self.current_time_index += 1
             
@@ -641,7 +807,13 @@ class ElectronFluxVisualizerApp(QMainWindow):
     
     def _on_time_changed(self, value):
         """Handle time slider change"""
+        old_index = self.current_time_index
         self.current_time_index = value
+        
+        # Clear trails if jumping backwards or far forward
+        if value < old_index or abs(value - old_index) > 10:
+            self.satellite_renderer.clear_all_trails()
+        
         self._update_satellite_positions()
     
     def _update_animation_speed(self, value):
@@ -655,17 +827,14 @@ class ElectronFluxVisualizerApp(QMainWindow):
         for file_path, file_widget in self.loaded_orbital_files.items():
             if not file_widget.is_checked():
                 continue
-                
-            sat_actor_key = f"satellite_actor_{file_path}"
-            if not hasattr(self, sat_actor_key):
-                continue
-                
+            
             orbital_data = self.orbital_data_dict[file_path]
             
             if 0 <= self.current_time_index < len(orbital_data):
                 point = orbital_data[self.current_time_index]
-                actor = getattr(self, sat_actor_key)
-                actor.SetPosition(point.x, point.y, point.z)
+                position = (point.x, point.y, point.z)
+                
+                self.satellite_renderer.update_satellite_position(position, file_path)
         
         # Update time label if we have any orbital data
         if self.orbital_data_dict:
