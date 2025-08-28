@@ -1,5 +1,5 @@
 """
-VTK Data Loading Module for Flux Orbital Visualizer
+VTK Data Loading Module for STRATOS Flux Visualizer
 Handles loading and validation of various VTK file formats
 """
 
