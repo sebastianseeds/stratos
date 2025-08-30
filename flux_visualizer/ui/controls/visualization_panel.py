@@ -52,7 +52,8 @@ class VisualizationPanel(QGroupBox):
         self.viz_mode_combo = QComboBox()
         self.viz_mode_combo.addItems([
             "Point Cloud",
-            "Isosurfaces"
+            "Isosurfaces",
+            "Slice Planes"
         ])
         self.viz_mode_combo.currentTextChanged.connect(self._on_mode_changed)
         mode_layout.addWidget(self.viz_mode_combo)
@@ -296,31 +297,40 @@ class VisualizationPanel(QGroupBox):
     
     def _add_slice_controls(self):
         """Add slice plane specific controls"""
-        slice_layout = QFormLayout()
+        slice_layout = QVBoxLayout()
         
-        # Slice axis
+        # Slice axis/orientation
+        axis_row = self._create_aligned_row("Orientation", None)
         self.slice_axis_combo = QComboBox()
-        self.slice_axis_combo.addItems(["X-Axis", "Y-Axis", "Z-Axis"])
-        self.slice_axis_combo.currentTextChanged.connect(lambda: self.settings_changed.emit())
-        slice_layout.addRow("Axis:", self.slice_axis_combo)
+        self.slice_axis_combo.addItems([
+            "X-Axis (YZ Plane)",
+            "Y-Axis (XZ Plane)", 
+            "Z-Axis (XY Plane)"
+        ])
+        self.slice_axis_combo.setCurrentText("Z-Axis (XY Plane)")
+        self.slice_axis_combo.currentTextChanged.connect(self._on_slice_axis_changed)
+        axis_row.addWidget(self.slice_axis_combo)
+        slice_layout.addLayout(axis_row)
         
-        # Slice position
-        pos_layout = QHBoxLayout()
+        # Slice position with label
+        pos_title = QLabel("Slice Position:")
+        pos_title.setStyleSheet("font-weight: bold; color: #666; font-size: 11px; margin-top: 5px;")
+        slice_layout.addWidget(pos_title)
+        
+        # Position slider
         self.slice_pos_slider = QSlider(Qt.Orientation.Horizontal)
         self.slice_pos_slider.setRange(0, 100)
         self.slice_pos_slider.setValue(50)
-        self.slice_pos_slider.setMinimumWidth(200)  # Standardized width
+        self.slice_pos_slider.setMinimumWidth(200)
         self.slice_pos_slider.valueChanged.connect(self._on_slice_pos_changed)
-        pos_layout.addWidget(self.slice_pos_slider)
-        self.slice_pos_label = QLabel("50%")
-        self.slice_pos_label.setMinimumWidth(40)
-        pos_layout.addWidget(self.slice_pos_label)
-        slice_layout.addRow("Position:", pos_layout)
+        self.slice_pos_slider.setToolTip("Adjust the position of the slice plane")
+        slice_layout.addWidget(self.slice_pos_slider)
         
-        # Multiple slices
-        self.multi_slice_check = QCheckBox("Multiple Slices")
-        self.multi_slice_check.stateChanged.connect(lambda: self.settings_changed.emit())
-        slice_layout.addRow("", self.multi_slice_check)
+        # Position label (shows coordinate)
+        self.slice_pos_label = QLabel("Center (0 km)")
+        self.slice_pos_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.slice_pos_label.setStyleSheet("color: #5C6A72; font-size: 11px; margin-top: 2px;")
+        slice_layout.addWidget(self.slice_pos_label)
         
         self.dynamic_layout.addLayout(slice_layout)
     
@@ -430,7 +440,18 @@ class VisualizationPanel(QGroupBox):
     
     def _on_slice_pos_changed(self, value):
         """Handle slice position change"""
-        self.slice_pos_label.setText(f"{value}%")
+        # Update label to show position
+        if value == 50:
+            self.slice_pos_label.setText("Center (0 km)")
+        else:
+            offset = (value - 50) * 2  # Convert to percentage offset from center
+            self.slice_pos_label.setText(f"{value}% ({offset:+.0f}% from center)")
+        self.settings_changed.emit()
+    
+    def _on_slice_axis_changed(self, axis_text):
+        """Handle slice axis change"""
+        # Reset position to center when axis changes
+        self.slice_pos_slider.setValue(50)
         self.settings_changed.emit()
     
     def _on_flux_range_changed(self):
@@ -619,3 +640,23 @@ class VisualizationPanel(QGroupBox):
                 if checkbox.isChecked():
                     levels.append(slider.value())
         return levels if levels else [20, 40, 60, 80]  # Default levels
+    
+    def get_slice_axis(self):
+        """Get the current slice axis/orientation
+        
+        Returns:
+            str: Axis text like "X-Axis (YZ Plane)"
+        """
+        if hasattr(self, 'slice_axis_combo'):
+            return self.slice_axis_combo.currentText()
+        return "Z-Axis (XY Plane)"  # Default
+    
+    def get_slice_position(self):
+        """Get the slice position percentage
+        
+        Returns:
+            int: Position percentage (0-100)
+        """
+        if hasattr(self, 'slice_pos_slider'):
+            return self.slice_pos_slider.value()
+        return 50  # Default center

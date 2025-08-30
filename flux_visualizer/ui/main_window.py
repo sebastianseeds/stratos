@@ -925,8 +925,10 @@ class ElectronFluxVisualizerApp(QMainWindow):
                 min_flux = self.viz_panel.get_min_flux()
                 max_flux = self.viz_panel.get_max_flux()
                 
-                # Update isosurface settings if in isosurface mode
-                if self.viz_panel.get_current_mode() == "Isosurfaces":
+                # Update mode-specific settings
+                current_mode = self.viz_panel.get_current_mode()
+                
+                if current_mode == "Isosurfaces":
                     isosurface_style = self.viz_panel.get_isosurface_style()
                     self.flux_field_renderer.set_isosurface_style(isosurface_style)
                     
@@ -936,6 +938,12 @@ class ElectronFluxVisualizerApp(QMainWindow):
                     else:
                         levels = self.viz_panel.get_multiple_isosurface_levels()
                         self.flux_field_renderer.set_multiple_isosurface_levels(levels)
+                
+                elif current_mode == "Slice Planes":
+                    axis = self.viz_panel.get_slice_axis()
+                    position = self.viz_panel.get_slice_position()
+                    self.flux_field_renderer.set_slice_axis(axis)
+                    self.flux_field_renderer.set_slice_position(position)
                 
                 # Create color lookup table with flux range
                 scalar_range = vtk_data.GetScalarRange()

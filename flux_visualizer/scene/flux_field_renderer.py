@@ -30,6 +30,10 @@ class FluxFieldRenderer:
         self.isosurface_level = 50  # percentile
         self.multiple_levels = [20, 40, 60, 80]  # percentiles
         
+        # Slice plane settings
+        self.slice_axis = "Z-Axis (XY Plane)"
+        self.slice_position = 50  # percentage
+        
         # Scalar bar
         self.scalar_bar = None
         self.current_lut = None
@@ -59,6 +63,8 @@ class FluxFieldRenderer:
             actor = self._create_point_cloud(processed_data, color_lut, opacity)
         elif self.visualization_mode == "Isosurfaces":
             actor = self._create_isosurfaces(processed_data, color_lut, opacity)
+        elif self.visualization_mode == "Slice Planes":
+            actor = self._create_slice_plane(processed_data, color_lut, opacity)
         else:
             # Fallback to simple visualization
             actor = self._create_simple_visualization(processed_data, color_lut, opacity)
@@ -561,4 +567,137 @@ class FluxFieldRenderer:
         if levels != self.multiple_levels:
             self.multiple_levels = levels
             if self.visualization_mode == "Isosurfaces" and self.isosurface_style == "Multiple Isosurface":
+                self.refresh_all()
+    
+    def _create_slice_plane(self, vtk_data, color_lut, opacity):
+        """Create slice plane visualization of flux field
+        
+        Args:
+            vtk_data: VTK dataset containing the flux field
+            color_lut: Color lookup table
+            opacity: Opacity value
+            
+        Returns:
+            VTK actor for the slice plane
+        """
+        # Get data bounds
+        bounds = vtk_data.GetBounds()
+        
+        # Determine slice orientation and position
+        axis_text = self.slice_axis
+        position_percent = self.slice_position / 100.0
+        
+        # Set up plane normal and origin based on axis
+        if "X-Axis" in axis_text:
+            normal = [1, 0, 0]
+            origin_coord = bounds[0] + position_percent * (bounds[1] - bounds[0])
+            origin = [origin_coord, (bounds[2]+bounds[3])/2, (bounds[4]+bounds[5])/2]
+        elif "Y-Axis" in axis_text:
+            normal = [0, 1, 0]
+            origin_coord = bounds[2] + position_percent * (bounds[3] - bounds[2])
+            origin = [(bounds[0]+bounds[1])/2, origin_coord, (bounds[4]+bounds[5])/2]
+        else:  # Z-Axis (default)
+            normal = [0, 0, 1]
+            origin_coord = bounds[4] + position_percent * (bounds[5] - bounds[4])
+            origin = [(bounds[0]+bounds[1])/2, (bounds[2]+bounds[3])/2, origin_coord]
+        
+        # Create a high-resolution plane for interpolation
+        plane_source = vtk.vtkPlaneSource()
+        
+        # Calculate plane dimensions based on bounds and orientation
+        if "X-Axis" in axis_text:
+            # YZ plane
+            width = bounds[3] - bounds[2]   # Y extent
+            height = bounds[5] - bounds[4]  # Z extent
+            plane_source.SetOrigin(origin[0], bounds[2], bounds[4])
+            plane_source.SetPoint1(origin[0], bounds[3], bounds[4])
+            plane_source.SetPoint2(origin[0], bounds[2], bounds[5])
+        elif "Y-Axis" in axis_text:
+            # XZ plane
+            width = bounds[1] - bounds[0]   # X extent
+            height = bounds[5] - bounds[4]  # Z extent
+            plane_source.SetOrigin(bounds[0], origin[1], bounds[4])
+            plane_source.SetPoint1(bounds[1], origin[1], bounds[4])
+            plane_source.SetPoint2(bounds[0], origin[1], bounds[5])
+        else:  # Z-Axis
+            # XY plane
+            width = bounds[1] - bounds[0]   # X extent
+            height = bounds[3] - bounds[2]  # Y extent
+            plane_source.SetOrigin(bounds[0], bounds[2], origin[2])
+            plane_source.SetPoint1(bounds[1], bounds[2], origin[2])
+            plane_source.SetPoint2(bounds[0], bounds[3], origin[2])
+        
+        # Set resolution for smooth interpolation (higher = smoother)
+        resolution = 200  # Adjust this for quality vs performance
+        plane_source.SetXResolution(resolution)
+        plane_source.SetYResolution(resolution)
+        plane_source.Update()
+        
+        # Use probe filter to interpolate data onto the plane
+        probe = vtk.vtkProbeFilter()
+        probe.SetInputData(plane_source.GetOutput())
+        probe.SetSourceData(vtk_data)
+        probe.Update()
+        
+        slice_data = probe.GetOutput()
+        
+        # Check if slice has data
+        if slice_data.GetNumberOfPoints() == 0:
+            return None
+        
+        # Create mapper for the slice
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputData(slice_data)
+        
+        # Apply color mapping
+        if color_lut:
+            scalar_array = vtk_data.GetPointData().GetScalars()
+            if scalar_array:
+                scalar_range = scalar_array.GetRange()
+                mapper.SetLookupTable(color_lut)
+                mapper.SetScalarRange(scalar_range)
+                mapper.SetScalarModeToUsePointData()
+                mapper.ColorByArrayComponent(scalar_array.GetName(), 0)
+        else:
+            mapper.ScalarVisibilityOff()
+        
+        # Create actor
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+        
+        # Set properties
+        prop = actor.GetProperty()
+        prop.SetOpacity(opacity)
+        prop.SetRepresentationToSurface()
+        
+        if not color_lut:
+            # Default color for slices (cyan)
+            prop.SetColor(0.0, 0.8, 0.8)
+        
+        # Add some lighting
+        prop.SetAmbient(0.2)
+        prop.SetDiffuse(0.8)
+        
+        return actor
+    
+    def set_slice_axis(self, axis):
+        """Set the slice plane axis/orientation
+        
+        Args:
+            axis: Axis text like "Z-Axis (XY Plane)"
+        """
+        if axis != self.slice_axis:
+            self.slice_axis = axis
+            if self.visualization_mode == "Slice Planes":
+                self.refresh_all()
+    
+    def set_slice_position(self, position_percent):
+        """Set the slice plane position
+        
+        Args:
+            position_percent: Position percentage (0-100)
+        """
+        if position_percent != self.slice_position:
+            self.slice_position = position_percent
+            if self.visualization_mode == "Slice Planes":
                 self.refresh_all()
