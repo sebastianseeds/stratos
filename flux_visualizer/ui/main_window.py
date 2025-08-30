@@ -88,51 +88,59 @@ class ElectronFluxVisualizerApp(QMainWindow):
             self.config.MAIN_WINDOW_WIDTH,
             self.config.MAIN_WINDOW_HEIGHT
         )
-        
+
         # Central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        
+
         # Main layout
         main_layout = QHBoxLayout(central_widget)
-        
+
         # Create splitter
         splitter = QSplitter(Qt.Orientation.Horizontal)
         main_layout.addWidget(splitter)
-        
+
         # Left: VTK Widget
         vtk_frame = QWidget()
+        vtk_frame.setStyleSheet("""
+            QWidget {
+                background-color: #2a2a2a;
+                border: none;
+            }
+        """)
         vtk_layout = QVBoxLayout(vtk_frame)
-        
+        vtk_layout.setContentsMargins(0, 0, 0, 0)
+        vtk_layout.setSpacing(0)
+
         # Create a container for VTK widget with overlay buttons
         vtk_container = QWidget()
+        vtk_container.setStyleSheet("background-color: transparent;")
         vtk_container_layout = QVBoxLayout(vtk_container)
         vtk_container_layout.setContentsMargins(0, 0, 0, 0)
 
         self.vtk_widget = QVTKRenderWindowInteractor(vtk_container)
         vtk_container_layout.addWidget(self.vtk_widget)
 
-        # Create view buttons overlay - NEW
+        # Create view buttons overlay
         self._create_view_buttons_overlay()
+
+        # Create camera stats overlay
+        self._create_camera_stats_overlay()
 
         vtk_layout.addWidget(vtk_container)
 
-        # Earth controls below VTK widget (will be updated for flat style)
-        self.earth_controls = EarthControlsWidget(self.config)
-        vtk_layout.addWidget(self.earth_controls)
-        
         # Earth controls below VTK widget
         self.earth_controls = EarthControlsWidget(self.config)
         vtk_layout.addWidget(self.earth_controls)
-        
+
         splitter.addWidget(vtk_frame)
-        
+
         # Right: Control Panel
         control_panel = self._create_control_panel()
         control_panel.setMaximumWidth(self.config.CONTROL_PANEL_MAX_WIDTH)
         control_panel.setMinimumWidth(self.config.CONTROL_PANEL_MIN_WIDTH)
         splitter.addWidget(control_panel)
-        
+
         # Set splitter sizes
         splitter.setSizes([
             self.config.VTK_WIDGET_DEFAULT_WIDTH,
@@ -145,11 +153,11 @@ class ElectronFluxVisualizerApp(QMainWindow):
 
         # Create container widget for buttons
         self.view_buttons_widget = QWidget(self.vtk_widget)
-        self.view_buttons_widget.setGeometry(10, 10, 150, 35)
+        self.view_buttons_widget.setGeometry(10, 10, 160, 35)
 
         # Create horizontal layout
         layout = QHBoxLayout(self.view_buttons_widget)
-        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setContentsMargins(0, 0, 0, 0)  # No margins for cleaner look
         layout.setSpacing(5)
 
         # Create view label
@@ -159,74 +167,78 @@ class ElectronFluxVisualizerApp(QMainWindow):
                 color: white;
                 font-weight: bold;
                 background-color: transparent;
+                /* text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); Add shadow for readability */
             }
         """)
         layout.addWidget(view_label)
 
         # X button (red like X axis)
         self.view_x_button = QPushButton("X")
-        self.view_x_button.setMaximumSize(25, 25)
+        self.view_x_button.setFixedSize(25, 25)
         self.view_x_button.clicked.connect(self._snap_to_x_axis)
         self.view_x_button.setToolTip("View YZ plane (from X axis)")
         self.view_x_button.setStyleSheet("""
             QPushButton {
-                background-color: rgba(200, 50, 50, 180);
+                background-color: rgba(200, 50, 50, 200);  /* Increased opacity */
                 color: white;
-                border: 1px solid white;
+                border: 1px solid rgba(255, 255, 255, 0.8);
                 border-radius: 3px;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background-color: rgba(255, 70, 70, 200);
+                background-color: rgba(255, 70, 70, 220);
+                border: 1px solid white;
             }
         """)
         layout.addWidget(self.view_x_button)
 
         # Y button (green like Y axis)
         self.view_y_button = QPushButton("Y")
-        self.view_y_button.setMaximumSize(25, 25)
+        self.view_y_button.setFixedSize(25, 25)
         self.view_y_button.clicked.connect(self._snap_to_y_axis)
         self.view_y_button.setToolTip("View XZ plane (from Y axis)")
         self.view_y_button.setStyleSheet("""
             QPushButton {
-                background-color: rgba(50, 200, 50, 180);
+                background-color: rgba(50, 200, 50, 200);  /* Increased opacity */
                 color: white;
-                border: 1px solid white;
+                border: 1px solid rgba(255, 255, 255, 0.8);
                 border-radius: 3px;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background-color: rgba(70, 255, 70, 200);
+                background-color: rgba(70, 255, 70, 220);
+                border: 1px solid white;
             }
         """)
         layout.addWidget(self.view_y_button)
 
         # Z button (blue like Z axis)
         self.view_z_button = QPushButton("Z")
-        self.view_z_button.setMaximumSize(25, 25)
+        self.view_z_button.setFixedSize(25, 25)
         self.view_z_button.clicked.connect(self._snap_to_z_axis)
         self.view_z_button.setToolTip("View XY plane (from Z axis)")
         self.view_z_button.setStyleSheet("""
             QPushButton {
-                background-color: rgba(50, 50, 200, 180);
+                background-color: rgba(50, 50, 200, 200);  /* Increased opacity */
                 color: white;
-                border: 1px solid white;
+                border: 1px solid rgba(255, 255, 255, 0.8);
                 border-radius: 3px;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background-color: rgba(70, 70, 255, 200);
+                background-color: rgba(70, 70, 255, 220);
+                border: 1px solid white;
             }
         """)
         layout.addWidget(self.view_z_button)
 
         layout.addStretch()
 
-        # Style the container
+        # Remove the container background - make it transparent
         self.view_buttons_widget.setStyleSheet("""
             QWidget {
-                background-color: rgba(30, 30, 30, 150);
-                border-radius: 5px;
+                background-color: transparent;
+                border: none;
             }
         """)
 
@@ -276,6 +288,180 @@ class ElectronFluxVisualizerApp(QMainWindow):
         
         return panel
 
+    def _create_camera_stats_overlay(self):
+        """Create camera statistics overlay in BOTTOM RIGHT"""
+        from PyQt6.QtWidgets import QLabel
+        from PyQt6.QtCore import Qt
+
+        # Clean up any existing widget completely
+        if hasattr(self, 'camera_stats_widget'):
+            self.camera_stats_widget.deleteLater()
+            del self.camera_stats_widget
+            if hasattr(self, 'distance_label'):
+                del self.distance_label
+            if hasattr(self, 'earth_width_label'):
+                del self.earth_width_label
+
+        # Create container widget for stats
+        self.camera_stats_widget = QWidget(self.vtk_widget)
+
+        # IMPORTANT: Hide it initially until positioned
+        self.camera_stats_widget.hide()
+
+        # Set background for the widget to ensure clean redraws
+        self.camera_stats_widget.setStyleSheet("""
+            QWidget {
+                background-color: rgba(20, 20, 20, 255);
+                border: none;
+                border-radius: 3px;
+            }
+        """)
+
+        # Create vertical layout for stats
+        layout = QVBoxLayout(self.camera_stats_widget)
+        layout.setContentsMargins(8, 5, 8, 5)
+        layout.setSpacing(2)
+
+        # Distance to surface label
+        self.distance_label = QLabel("Distance: -- km")
+        self.distance_label.setFixedWidth(140)
+        self.distance_label.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-size: 12px;
+                font-family: 'Courier New', monospace;
+                background-color: transparent;
+                padding: 0px;
+            }
+        """)
+        self.distance_label.setAutoFillBackground(False)
+        self.distance_label.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
+        layout.addWidget(self.distance_label)
+
+        # Earth width in sky label
+        self.earth_width_label = QLabel("Earth Width: --°")
+        self.earth_width_label.setFixedWidth(140)
+        self.earth_width_label.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-size: 12px;
+                font-family: 'Courier New', monospace;
+                background-color: transparent;
+                padding: 0px;
+            }
+        """)
+        self.earth_width_label.setAutoFillBackground(False)
+        self.earth_width_label.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
+        layout.addWidget(self.earth_width_label)
+
+        # Set a fixed size for the widget
+        self.camera_stats_widget.setFixedSize(160, 50)
+
+        # Schedule positioning after widget is ready
+        QTimer.singleShot(200, self._initial_position_camera_stats)
+
+        # Make sure widget is on top
+        self.camera_stats_widget.raise_()
+
+    def _initial_position_camera_stats(self):
+        """Initial positioning of camera stats to BOTTOM RIGHT"""
+        if hasattr(self, 'camera_stats_widget') and hasattr(self, 'vtk_widget'):
+            # Get VTK widget dimensions
+            vtk_width = self.vtk_widget.width()
+            vtk_height = self.vtk_widget.height()
+
+            # Make sure we have valid dimensions
+            if vtk_width > 200 and vtk_height > 100:
+                # Position at BOTTOM RIGHT
+                new_x = vtk_width - 235
+                new_y = vtk_height - 125
+
+                self.camera_stats_widget.move(new_x, new_y)
+                self.camera_stats_widget.show()  # NOW show it after positioning
+
+                # Update stats after positioning
+                self._update_camera_stats()
+            else:
+                # Widget not ready yet, try again
+                QTimer.singleShot(100, self._initial_position_camera_stats)
+
+
+    def _reposition_camera_stats(self):
+        """Reposition camera stats widget to BOTTOM RIGHT (for resize events)"""
+        if hasattr(self, 'camera_stats_widget') and hasattr(self, 'vtk_widget') and self.camera_stats_widget.isVisible():
+            # Get VTK widget dimensions
+            vtk_width = self.vtk_widget.width()
+            vtk_height = self.vtk_widget.height()
+
+            # Make sure we have valid dimensions
+            if vtk_width > 200 and vtk_height > 100:
+                # Position at BOTTOM RIGHT
+                new_x = vtk_width - 170
+                new_y = vtk_height - 60
+
+                self.camera_stats_widget.move(new_x, new_y)
+
+    def _update_camera_stats(self):
+        """Update camera statistics display"""
+        if not hasattr(self, 'distance_label') or not hasattr(self, 'earth_width_label') or not hasattr(self, 'camera'):
+            return
+
+        # Make sure widget is visible before updating
+        if not self.camera_stats_widget.isVisible():
+            return
+
+        # Get camera position
+        camera_pos = self.camera.GetPosition()
+
+        # Calculate distance from camera to center of Earth (origin)
+        distance_to_center = np.sqrt(camera_pos[0]**2 + camera_pos[1]**2 + camera_pos[2]**2)
+
+        # Distance to surface (subtract Earth radius)
+        distance_to_surface = distance_to_center - self.config.EARTH_RADIUS_KM
+
+        # Format distance
+        if distance_to_surface < 1000:
+            distance_text = f"Distance: {distance_to_surface:.1f} km"
+        elif distance_to_surface < 10000:
+            distance_text = f"Distance: {distance_to_surface:.0f} km"
+        else:
+            distance_text = f"Distance: {distance_to_surface/1000:.1f}k km"
+
+        # Update distance label - force complete redraw
+        self.distance_label.setText(distance_text)
+        self.distance_label.update()  # Force immediate update
+
+        # Calculate angular width of Earth in camera view
+        if distance_to_center > 0:
+            angular_radius_rad = np.arctan(self.config.EARTH_RADIUS_KM / distance_to_center)
+            angular_diameter_deg = 2 * np.degrees(angular_radius_rad)
+
+            # Format angular width
+            if angular_diameter_deg < 1:
+                width_text = f"Earth Width: {angular_diameter_deg:.2f}°"
+            elif angular_diameter_deg < 10:
+                width_text = f"Earth Width: {angular_diameter_deg:.1f}°"
+            else:
+                width_text = f"Earth Width: {angular_diameter_deg:.0f}°"
+        else:
+            width_text = "Earth Width: --°"
+
+        # Update earth width label - force complete redraw
+        self.earth_width_label.setText(width_text)
+        self.earth_width_label.update()  # Force immediate update
+
+        # Force the entire widget to update
+        self.camera_stats_widget.update()
+
+    # Handle window resize events
+    def resizeEvent(self, event):
+        """Handle window resize to reposition overlays"""
+        super().resizeEvent(event)
+        # Reposition camera stats to stay in BOTTOM RIGHT
+        if hasattr(self, '_reposition_camera_stats'):
+            # Use a small delay to ensure VTK widget has updated size
+            QTimer.singleShot(10, self._reposition_camera_stats)
+        
     def _setup_axes_widget(self):
         """Setup coordinate axes widget in corner"""
         # Create axes actor
@@ -303,16 +489,37 @@ class ElectronFluxVisualizerApp(QMainWindow):
         self.renderer = vtk.vtkRenderer()
         self.vtk_widget.GetRenderWindow().AddRenderer(self.renderer)
         self.renderer.SetBackground(*self.config.RENDERER_BACKGROUND_COLOR)
-        
+
         # Setup camera
         self.camera = self.renderer.GetActiveCamera()
         self.camera.SetPosition(*self.config.CAMERA_DEFAULT_POSITION)
         self.camera.SetFocalPoint(*self.config.CAMERA_DEFAULT_FOCAL_POINT)
         self.camera.SetViewUp(*self.config.CAMERA_DEFAULT_VIEW_UP)
-        
+
         # Initialize interactor
         self.vtk_widget.Initialize()
         self.vtk_widget.Start()
+
+        # Add observer for camera interactions with proper throttling
+        self.camera_update_pending = False
+
+        def on_camera_change(obj, event):
+            if not self.camera_update_pending:
+                self.camera_update_pending = True
+                QTimer.singleShot(50, self._do_camera_update)
+
+        def _do_camera_update():
+            self.camera_update_pending = False
+            self._update_camera_stats()
+
+        self._do_camera_update = _do_camera_update
+
+        # Add observers for various interaction events
+        interactor = self.vtk_widget.GetRenderWindow().GetInteractor()
+        interactor.AddObserver('InteractionEvent', on_camera_change)
+        interactor.AddObserver('MouseWheelForwardEvent', on_camera_change)
+        interactor.AddObserver('MouseWheelBackwardEvent', on_camera_change)
+        interactor.AddObserver('EndInteractionEvent', lambda o, e: self._update_camera_stats())
     
     def _connect_signals(self):
         """Connect UI signals to methods"""
@@ -383,6 +590,7 @@ class ElectronFluxVisualizerApp(QMainWindow):
         self.camera.SetViewUp(0, 0, 1)  # Z is up
         self.renderer.ResetCameraClippingRange()
         self.vtk_widget.GetRenderWindow().Render()
+        self._update_camera_stats()
 
     def _snap_to_y_axis(self):
         """Snap camera to view XZ plane from Y axis"""
@@ -392,6 +600,7 @@ class ElectronFluxVisualizerApp(QMainWindow):
         self.camera.SetViewUp(0, 0, 1)  # Z is up
         self.renderer.ResetCameraClippingRange()
         self.vtk_widget.GetRenderWindow().Render()
+        self._update_camera_stats()
 
     def _snap_to_z_axis(self):
         """Snap camera to view XY plane from Z axis"""
@@ -401,6 +610,7 @@ class ElectronFluxVisualizerApp(QMainWindow):
         self.camera.SetViewUp(0, 1, 0)  # Y is up
         self.renderer.ResetCameraClippingRange()
         self.vtk_widget.GetRenderWindow().Render()
+        self._update_camera_stats()
         
     def _load_flux_files(self):
         """Load one or more VTK flux files"""
@@ -756,6 +966,7 @@ class ElectronFluxVisualizerApp(QMainWindow):
         self.camera.SetViewUp(*self.config.CAMERA_DEFAULT_VIEW_UP)
         self.renderer.ResetCameraClippingRange()
         self.vtk_widget.GetRenderWindow().Render()
+        # Stats will update via the timer/observer, not directly
     
     def _start_animation(self):
         """Start animation"""

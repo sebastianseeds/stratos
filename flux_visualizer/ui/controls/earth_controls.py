@@ -30,11 +30,11 @@ class EarthControlsWidget(QWidget):
         """Setup the controls UI"""
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 5, 10, 5)
-        layout.setSpacing(15)  # More spacing between elements
+        layout.setSpacing(15)
         
         # Earth opacity slider
         earth_label = QLabel("Earth Opacity:")
-        earth_label.setStyleSheet("color: #999; font-size: 12px;")
+        earth_label.setStyleSheet("color: #aaa; font-size: 12px;")  # Lighter gray
         layout.addWidget(earth_label)
         
         self.earth_opacity_slider = QSlider(Qt.Orientation.Horizontal)
@@ -45,12 +45,12 @@ class EarthControlsWidget(QWidget):
         layout.addWidget(self.earth_opacity_slider)
         
         self.earth_opacity_label = QLabel(f"{int(self.config.EARTH_DEFAULT_OPACITY * 100)}%")
-        self.earth_opacity_label.setStyleSheet("color: white; font-size: 12px; min-width: 35px;")
+        self.earth_opacity_label.setStyleSheet("color: #ddd; font-size: 12px; min-width: 35px;")
         layout.addWidget(self.earth_opacity_label)
         
         # Separator
         separator1 = QLabel("|")
-        separator1.setStyleSheet("color: #444; font-size: 16px;")
+        separator1.setStyleSheet("color: #555; font-size: 16px;")  # Lighter separator
         layout.addWidget(separator1)
         
         # Grid checkbox
@@ -73,12 +73,12 @@ class EarthControlsWidget(QWidget):
         
         # Separator
         separator2 = QLabel("|")
-        separator2.setStyleSheet("color: #444; font-size: 16px;")
+        separator2.setStyleSheet("color: #555; font-size: 16px;")
         layout.addWidget(separator2)
         
         # Satellite size slider
         sat_label = QLabel("Satellite Size:")
-        sat_label.setStyleSheet("color: #999; font-size: 12px;")
+        sat_label.setStyleSheet("color: #aaa; font-size: 12px;")
         layout.addWidget(sat_label)
         
         self.satellite_size_slider = QSlider(Qt.Orientation.Horizontal)
@@ -89,21 +89,22 @@ class EarthControlsWidget(QWidget):
         layout.addWidget(self.satellite_size_slider)
         
         self.satellite_size_label = QLabel("500km")
-        self.satellite_size_label.setStyleSheet("color: white; font-size: 12px; min-width: 50px;")
+        self.satellite_size_label.setStyleSheet("color: #ddd; font-size: 12px; min-width: 50px;")
         layout.addWidget(self.satellite_size_label)
         
         layout.addStretch()
         
-        # Apply flat styling without box
+        # Apply flat styling - transparent background to blend with parent
         self.setStyleSheet("""
             QWidget {
-                background-color: #1e1e1e;
+                background-color: transparent;
                 border: none;
             }
             QCheckBox {
                 color: #cccccc;
                 font-size: 12px;
                 spacing: 5px;
+                background-color: transparent;
             }
             QCheckBox:hover {
                 color: white;
@@ -112,32 +113,32 @@ class EarthControlsWidget(QWidget):
                 width: 14px;
                 height: 14px;
                 border-radius: 3px;
-                border: 1px solid #555;
-                background-color: #2a2a2a;
+                border: 1px solid #666;
+                background-color: rgba(42, 42, 42, 180);
             }
             QCheckBox::indicator:checked {
                 background-color: #4CAF50;
                 border: 1px solid #45a049;
             }
             QCheckBox::indicator:hover {
-                border: 1px solid #888;
+                border: 1px solid #999;
             }
             QSlider::groove:horizontal {
                 height: 4px;
-                background: #3a3a3a;
+                background: rgba(58, 58, 58, 180);
                 border-radius: 2px;
             }
             QSlider::handle:horizontal {
-                background: #666;
-                border: 1px solid #555;
+                background: #777;
+                border: 1px solid #666;
                 width: 14px;
                 height: 14px;
                 margin: -5px 0;
                 border-radius: 7px;
             }
             QSlider::handle:horizontal:hover {
-                background: #888;
-                border: 1px solid #999;
+                background: #999;
+                border: 1px solid #aaa;
             }
             QSlider::sub-page:horizontal {
                 background: #4CAF50;
@@ -145,7 +146,7 @@ class EarthControlsWidget(QWidget):
             }
         """)
         
-        self.setFixedHeight(30)  # Slightly smaller height
+        self.setFixedHeight(30)
     
     def _on_opacity_changed(self, value):
         """Handle opacity slider change"""
