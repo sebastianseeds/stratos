@@ -70,9 +70,9 @@ class Config:
     DEFAULT_POINT_DENSITY = 5000
     MIN_POINT_DENSITY = 500
     MAX_POINT_DENSITY = 10000
-    DEFAULT_POINT_SIZE = 400  # meters
-    MIN_POINT_SIZE = 100
-    MAX_POINT_SIZE = 800
+    DEFAULT_POINT_SIZE = 400  # km radius (VTK coordinates in km)
+    MIN_POINT_SIZE = 100      # km radius  
+    MAX_POINT_SIZE = 800      # km radius
     POINT_SPHERE_THETA_RESOLUTION = 8  # Reduced for performance
     POINT_SPHERE_PHI_RESOLUTION = 8
     JITTER_RADIUS = 300.0  # km - spatial jitter to break up grid artifacts
@@ -172,7 +172,7 @@ class Config:
     MAIN_WINDOW_START_X = 100
     MAIN_WINDOW_START_Y = 100
     
-    # Control panel
+    # Control panel (increased by 20%)
     CONTROL_PANEL_MIN_WIDTH = 450
     CONTROL_PANEL_MAX_WIDTH = 450
     

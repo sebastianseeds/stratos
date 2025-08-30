@@ -16,7 +16,7 @@ from config import Config
 from core import OrbitalPoint
 from data_io import VTKDataLoader, OrbitalDataLoader
 from visualization import ColorManager
-from scene import EarthRenderer, OrbitalRenderer, SatelliteRenderer
+from scene import EarthRenderer, OrbitalRenderer, SatelliteRenderer, FluxFieldRenderer, StarfieldRenderer
 from analysis import FluxAnalyzer
 
 # Import UI components
@@ -65,9 +65,16 @@ class ElectronFluxVisualizerApp(QMainWindow):
         self.earth_renderer = EarthRenderer(self.renderer)
         self.earth_renderer.create_earth()
         
+        # Create starfield background
+        self.starfield_renderer = StarfieldRenderer(self.renderer)
+        self.starfield_renderer.create_starfield_background()
+        
         # ADDED: Setup orbital and satellite renderers
         self.orbital_renderer = OrbitalRenderer(self.renderer)
         self.satellite_renderer = SatelliteRenderer(self.renderer)
+        
+        # Setup flux field renderer
+        self.flux_field_renderer = FluxFieldRenderer(self.renderer)
         
         # Animation timer
         self.animation_timer = QTimer(self)
@@ -75,6 +82,9 @@ class ElectronFluxVisualizerApp(QMainWindow):
         
         # Connect signals
         self._connect_signals()
+        
+        # Connect visualization panel signals
+        self._connect_viz_panel_signals()
         
         # Initial camera setup
         self._reset_camera()
@@ -271,10 +281,13 @@ class ElectronFluxVisualizerApp(QMainWindow):
         self.status_label.setWordWrap(True)
         self.status_label.setStyleSheet("""
             QLabel { 
-                background-color: #f0f0f0; 
+                background-color: #2b2b2b; 
+                color: #e0e0e0;
                 padding: 10px; 
-                border: 1px solid #ccc;
+                border: 1px solid #555;
                 border-radius: 3px;
+                font-family: 'Consolas', 'Monaco', monospace;
+                font-size: 11px;
             }
         """)
         layout.addWidget(self.status_label)
@@ -521,6 +534,63 @@ class ElectronFluxVisualizerApp(QMainWindow):
         interactor.AddObserver('MouseWheelBackwardEvent', on_camera_change)
         interactor.AddObserver('EndInteractionEvent', lambda o, e: self._update_camera_stats())
     
+    def _connect_viz_panel_signals(self):
+        """Connect visualization panel signals to flux field renderer"""
+        # Mode change
+        self.viz_panel.mode_changed.connect(self._on_viz_mode_changed)
+        
+        # Common settings
+        self.viz_panel.colormap_changed.connect(lambda: self._on_colormap_changed())
+        self.viz_panel.scale_changed.connect(lambda: self._on_scale_changed())
+        self.viz_panel.opacity_changed.connect(self._on_opacity_changed)
+        
+        # Point cloud specific signals
+        self.viz_panel.settings_changed.connect(self._on_viz_settings_changed)
+        
+        # File selection signal
+        self.viz_panel.selected_file_changed.connect(self._on_selected_file_changed)
+    
+    def _on_viz_mode_changed(self, mode):
+        """Handle visualization mode change"""
+        self.flux_field_renderer.set_visualization_mode(mode)
+        self._update_visualization()
+    
+    def _on_colormap_changed(self):
+        """Handle colormap change"""
+        self._update_visualization()
+    
+    def _on_scale_changed(self):
+        """Handle scale change"""
+        self._update_visualization()
+    
+    def _on_opacity_changed(self, value):
+        """Handle opacity change"""
+        opacity = value / 100.0
+        self.flux_field_renderer.update_opacity(opacity)
+        self.vtk_widget.GetRenderWindow().Render()
+    
+    def _on_viz_settings_changed(self):
+        """Handle visualization settings change"""
+        mode = self.viz_panel.get_current_mode()
+        
+        if mode == "Point Cloud":
+            # Update point cloud settings
+            if hasattr(self.viz_panel, 'point_density_slider'):
+                density = self.viz_panel.point_density_slider.value()
+                self.flux_field_renderer.set_point_density(density)
+            
+            if hasattr(self.viz_panel, 'point_size_slider'):
+                size = self.viz_panel.point_size_slider.value()
+                self.flux_field_renderer.set_point_size(size)
+        
+        self.vtk_widget.GetRenderWindow().Render()
+    
+    def _on_selected_file_changed(self, file_path):
+        """Handle when user selects a different file in visualization panel"""
+        # For now, just update visualization for all files
+        # In the future, this could load per-file settings
+        self._update_visualization()
+    
     def _connect_signals(self):
         """Connect UI signals to methods"""
         # Data panel
@@ -615,8 +685,9 @@ class ElectronFluxVisualizerApp(QMainWindow):
     def _load_flux_files(self):
         """Load one or more VTK flux files"""
         file_filter = VTKDataLoader.get_file_filter()
+        default_dir = "data/vtk" if Path("data/vtk").exists() else ""
         file_paths, _ = QFileDialog.getOpenFileNames(
-            self, "Load Flux File(s)", "", file_filter
+            self, "Load Flux File(s)", default_dir, file_filter
         )
         
         if not file_paths:
@@ -661,6 +732,24 @@ class ElectronFluxVisualizerApp(QMainWindow):
             self.data_panel.add_flux_file_widget(file_widget)
             self.loaded_files[file_path] = file_widget
             
+            # Add to visualization panel
+            self.viz_panel.add_flux_file(file_path)
+            
+            # Set particle-specific default colormap if this is the first/only file
+            if len(self.loaded_files) == 1:
+                particle_type = file_widget.get_particle_type()
+                particle_colormaps = {
+                    "electron": "Viridis",
+                    "proton": "Plasma",
+                    "alpha": "Inferno",
+                    "heavy_ion": "Magma",
+                    "neutron": "Cividis",
+                    "gamma": "Turbo",
+                    "cosmic_ray": "Twilight"
+                }
+                if particle_type in particle_colormaps:
+                    self.viz_panel.set_colormap(particle_colormaps[particle_type])
+            
             self.progress_bar.setValue(75)
             
             # Update visualization
@@ -696,7 +785,13 @@ class ElectronFluxVisualizerApp(QMainWindow):
             del self.loaded_files[file_path]
             del self.vtk_data_dict[file_path]
             
-            # Remove actor if exists
+            # Remove from flux field renderer
+            self.flux_field_renderer.remove_flux_field(file_path)
+            
+            # Remove from visualization panel
+            self.viz_panel.remove_flux_file(file_path)
+            
+            # Remove actor if exists (kept for backward compatibility)
             actor_key = f"flux_actor_{file_path}"
             if hasattr(self, actor_key):
                 actor = getattr(self, actor_key)
@@ -814,71 +909,53 @@ class ElectronFluxVisualizerApp(QMainWindow):
     
     def _update_visualization(self):
         """Update field visualization for all loaded files"""
-        # Remove all existing flux actors
-        for file_path in list(self.vtk_data_dict.keys()):
-            actor_key = f"flux_actor_{file_path}"
-            if hasattr(self, actor_key):
-                actor = getattr(self, actor_key)
-                self.renderer.RemoveActor(actor)
-                delattr(self, actor_key)
+        # Clear all existing flux visualizations
+        self.flux_field_renderer.clear_all()
         
-        # Create actors for checked files
+        # Add visualizations for checked files
         for file_path, file_widget in self.loaded_files.items():
             if file_widget.is_checked():
-                self._create_field_visualization_for_file(file_path, file_widget)
+                vtk_data = self.vtk_data_dict[file_path]
+                particle_type = file_widget.get_particle_type()
+                
+                # Get visualization settings
+                colormap_name = self.viz_panel.get_colormap()
+                scale_mode = self.viz_panel.get_scale()
+                opacity = self.viz_panel.get_opacity() / 100.0
+                min_flux = self.viz_panel.get_min_flux()
+                max_flux = self.viz_panel.get_max_flux()
+                
+                # Update isosurface settings if in isosurface mode
+                if self.viz_panel.get_current_mode() == "Isosurfaces":
+                    isosurface_style = self.viz_panel.get_isosurface_style()
+                    self.flux_field_renderer.set_isosurface_style(isosurface_style)
+                    
+                    if isosurface_style == "Single Isosurface":
+                        level = self.viz_panel.get_isosurface_level()
+                        self.flux_field_renderer.set_isosurface_level(level)
+                    else:
+                        levels = self.viz_panel.get_multiple_isosurface_levels()
+                        self.flux_field_renderer.set_multiple_isosurface_levels(levels)
+                
+                # Create color lookup table with flux range
+                scalar_range = vtk_data.GetScalarRange()
+                
+                # Apply flux range limits
+                if max_flux is not None:
+                    scalar_range = (scalar_range[0], max_flux)
+                if min_flux is not None:
+                    scalar_range = (max(min_flux, scalar_range[0]), scalar_range[1])
+                
+                lut = self.color_manager.create_lookup_table_with_scale(
+                    colormap_name, scale_mode, scalar_range
+                )
+                
+                # Add flux field to renderer with flux thresholds
+                self.flux_field_renderer.add_flux_field(
+                    file_path, vtk_data, lut, opacity, min_flux, max_flux
+                )
         
         self.vtk_widget.GetRenderWindow().Render()
-    
-    def _create_field_visualization_for_file(self, file_path, file_widget):
-        """Create visualization for a specific flux file"""
-        vtk_data = self.vtk_data_dict[file_path]
-        particle_type = file_widget.get_particle_type()
-        
-        # Simple threshold filter
-        scalar_range = vtk_data.GetScalarRange()
-        threshold = vtk.vtkThreshold()
-        threshold.SetInputData(vtk_data)
-        threshold.SetLowerThreshold(scalar_range[1] * 0.01)
-        threshold.SetThresholdFunction(vtk.vtkThreshold.THRESHOLD_UPPER)
-        threshold.Update()
-        
-        # Create mapper
-        mapper = vtk.vtkDataSetMapper()
-        mapper.SetInputConnection(threshold.GetOutputPort())
-        mapper.SetScalarRange(scalar_range)
-        
-        # Get colormap settings
-        colormap_name = self.viz_panel.get_colormap()
-        scale_mode = self.viz_panel.get_scale()
-        
-        # Particle-specific colormaps
-        particle_colormaps = {
-            "electron": "Viridis",
-            "proton": "Plasma",
-            "alpha": "Inferno",
-            "heavy_ion": "Magma",
-            "neutron": "Cividis",
-            "gamma": "Turbo",
-            "cosmic_ray": "Twilight"
-        }
-        
-        if particle_type in particle_colormaps:
-            colormap_name = particle_colormaps[particle_type]
-        
-        lut = self.color_manager.create_lookup_table_with_scale(
-            colormap_name, scale_mode, scalar_range
-        )
-        mapper.SetLookupTable(lut)
-        
-        # Create actor
-        actor_key = f"flux_actor_{file_path}"
-        actor = vtk.vtkActor()
-        actor.SetMapper(mapper)
-        actor.GetProperty().SetPointSize(5)
-        actor.GetProperty().SetOpacity(self.viz_panel.get_opacity() / 100.0)
-        
-        setattr(self, actor_key, actor)
-        self.renderer.AddActor(actor)
     
     def _update_orbital_visualization(self):
         """Update orbital visualization for all loaded files"""
@@ -1077,10 +1154,6 @@ class ElectronFluxVisualizerApp(QMainWindow):
         
         self.vtk_widget.GetRenderWindow().Render()
     
-    def _on_viz_mode_changed(self, mode):
-        """Handle visualization mode change"""
-        # Mode-specific visualization updates would go here
-        self._update_visualization()
     
     def _on_analysis_settings_changed(self):
         """Handle analysis settings change"""
