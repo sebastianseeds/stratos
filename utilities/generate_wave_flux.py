@@ -104,21 +104,21 @@ def create_gaussian_wave_flux():
     return multiblock, time_values
 
 def save_time_dependent_vts(multiblock, time_values, filename):
-    """Save the multiblock dataset as a time-dependent VTS file"""
+    """Save the multiblock dataset as a time-dependent VTS file with uniform XY plane wave"""
     
-    # Use a much smaller grid and fewer time steps to avoid VTS format issues
-    # Create a fresh structured grid with proper dimensions
-    nx, ny, nz = 20, 20, 40  # Smaller grid
-    x_range = (-5000, 5000)   # km
-    y_range = (-5000, 5000)   # km  
-    z_range = (-10000, 10000) # km
+    # Grid parameters - extend to ±80000 km as requested
+    nx, ny, nz = 80, 80, 80  # Higher resolution for large domain
+    x_range = (-80000, 80000)  # km - full domain
+    y_range = (-80000, 80000)  # km - full domain  
+    z_range = (-80000, 80000)  # km - full domain
     
-    # Reduce to 10 time steps for testing
-    num_time_steps = 10
+    # Time parameters - more time steps for smoother animation
+    num_time_steps = 20
     time_vals = np.linspace(time_values[0], time_values[-1], num_time_steps)
     
-    print(f"Creating simplified VTS with {num_time_steps} time steps")
+    print(f"Creating uniform XY plane wave VTS with {num_time_steps} time steps")
     print(f"Grid size: {nx}×{ny}×{nz} = {nx*ny*nz} points")
+    print(f"Domain: {x_range[0]} to {x_range[1]} km in all axes")
     
     # Create coordinate arrays
     x = np.linspace(x_range[0], x_range[1], nx)
@@ -138,28 +138,36 @@ def save_time_dependent_vts(multiblock, time_values, filename):
                 points.InsertNextPoint(X[i, j, k], Y[i, j, k], Z[i, j, k])
     output_grid.SetPoints(points)
     
-    # Wave parameters
-    gaussian_sigma_xy = 1500.0  # km
-    gaussian_sigma_z = 1000.0   # km  
-    wave_amplitude = 5e7        # particles/cm²/s/sr/MeV
+    # Uniform plane wave parameters
+    plane_amplitude = 1e8        # particles/cm²/s/sr/MeV - uniform across XY plane
+    plane_thickness = 5000.0     # km - thickness of the moving plane
+    background_flux = 1e3        # particles/cm²/s/sr/MeV - very low background
     
     # Add flux data for each time step as separate arrays
     for t_idx, time_hours in enumerate(time_vals):
         print(f"  Adding time step {t_idx}: t={time_hours:.1f}h")
         
-        # Calculate wave center position
-        wave_center_z = z_range[0] + (time_hours - time_vals[0]) / (time_vals[-1] - time_vals[0]) * (z_range[1] - z_range[0])
+        # Calculate plane center Z position (moves from -80000 to +80000)
+        progress = (time_hours - time_vals[0]) / (time_vals[-1] - time_vals[0])
+        plane_center_z = z_range[0] + progress * (z_range[1] - z_range[0])
+        
+        print(f"    Plane at Z = {plane_center_z:.0f} km")
         
         flux_values = []
         for i in range(nx):
             for j in range(ny):
                 for k in range(nz):
-                    # Calculate Gaussian wave
-                    r_xy = np.sqrt(X[i, j, k]**2 + Y[i, j, k]**2)
-                    r_z = abs(Z[i, j, k] - wave_center_z)
+                    # Distance from current Z position to the moving plane
+                    z_dist = abs(Z[i, j, k] - plane_center_z)
                     
-                    flux_val = wave_amplitude * np.exp(-(r_xy**2) / (2 * gaussian_sigma_xy**2)) * \
-                                              np.exp(-(r_z**2) / (2 * gaussian_sigma_z**2))
+                    # Create uniform plane: high flux near plane center, background elsewhere
+                    if z_dist <= plane_thickness:
+                        # Gaussian falloff within the plane thickness
+                        flux_val = plane_amplitude * np.exp(-(z_dist**2) / (2 * (plane_thickness/3)**2))
+                    else:
+                        # Low background flux
+                        flux_val = background_flux
+                    
                     flux_values.append(flux_val)
         
         # Create array for this time step
