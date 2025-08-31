@@ -49,6 +49,7 @@ class ElectronFluxVisualizerApp(QMainWindow):
         self.vtk_data_dict = {}  # Dict of filename -> vtk_data
         self.loaded_orbital_files = {}  # Dict of filename -> LoadedFileWidget
         self.orbital_data_dict = {}  # Dict of filename -> orbital_data
+        self.spectrum_windows = {}  # Dict of window_id -> spectrum window
         self.current_time_index = 0
         self.is_playing = False
         
@@ -256,9 +257,18 @@ class ElectronFluxVisualizerApp(QMainWindow):
         self.view_buttons_widget.raise_()
         
     def _create_control_panel(self):
-        """Create the main control panel"""
-        panel = QWidget()
-        layout = QVBoxLayout(panel)
+        """Create the main control panel with scroll area"""
+        from PyQt6.QtWidgets import QScrollArea
+        
+        # Create scroll area
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        
+        # Create the content widget
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         
         # Data loading panel
         self.data_panel = DataLoadingPanel()
@@ -299,7 +309,10 @@ class ElectronFluxVisualizerApp(QMainWindow):
         
         layout.addStretch()
         
-        return panel
+        # Set the content widget to the scroll area
+        scroll_area.setWidget(content_widget)
+        
+        return scroll_area
 
     def _create_camera_stats_overlay(self):
         """Create camera statistics overlay in BOTTOM RIGHT"""
@@ -613,6 +626,15 @@ class ElectronFluxVisualizerApp(QMainWindow):
         
         # Analysis panel
         self.analysis_panel.settings_changed.connect(self._on_analysis_settings_changed)
+        self.analysis_panel.energy_spectrum_clicked.connect(self._on_energy_spectrum_clicked)
+        self.analysis_panel.pitch_angle_clicked.connect(self._on_pitch_angle_clicked)
+        self.analysis_panel.phase_space_clicked.connect(self._on_phase_space_clicked)
+        self.analysis_panel.dose_calc_clicked.connect(self._on_dose_calc_clicked)
+        self.analysis_panel.flux_time_clicked.connect(self._on_flux_time_clicked)
+        self.analysis_panel.orbit_stats_clicked.connect(self._on_orbit_stats_clicked)
+        self.analysis_panel.ground_track_clicked.connect(self._on_ground_track_clicked)
+        self.analysis_panel.altitude_profile_clicked.connect(self._on_altitude_profile_clicked)
+        self.analysis_panel.peak_analysis_clicked.connect(self._on_peak_analysis_clicked)
         
         # Earth controls
         self.earth_controls.opacity_changed.connect(self._update_earth_opacity)
@@ -685,7 +707,18 @@ class ElectronFluxVisualizerApp(QMainWindow):
     def _load_flux_files(self):
         """Load one or more VTK flux files"""
         file_filter = VTKDataLoader.get_file_filter()
-        default_dir = "data/vtk" if Path("data/vtk").exists() else ""
+        
+        # Get the project root (parent of flux_visualizer)
+        app_root = Path(__file__).parent.parent.parent
+        
+        # Default to data/flux directory
+        if (app_root / "data/flux").exists():
+            default_dir = str(app_root / "data/flux")
+        elif (app_root / "data/vtk").exists():
+            default_dir = str(app_root / "data/vtk")
+        else:
+            default_dir = ""
+            
         file_paths, _ = QFileDialog.getOpenFileNames(
             self, "Load Flux File(s)", default_dir, file_filter
         )
@@ -755,6 +788,9 @@ class ElectronFluxVisualizerApp(QMainWindow):
             # Update visualization
             self._update_visualization()
             
+            # Update time slider range (in case this is time-dependent flux)
+            self._update_time_slider_range()
+            
             self.progress_bar.setValue(100)
             
             # Update status
@@ -791,6 +827,9 @@ class ElectronFluxVisualizerApp(QMainWindow):
             # Remove from visualization panel
             self.viz_panel.remove_flux_file(file_path)
             
+            # Update time slider range
+            self._update_time_slider_range()
+            
             # Remove actor if exists (kept for backward compatibility)
             actor_key = f"flux_actor_{file_path}"
             if hasattr(self, actor_key):
@@ -812,8 +851,19 @@ class ElectronFluxVisualizerApp(QMainWindow):
     
     def _load_orbital_files(self):
         """Load one or more orbital CSV files"""
+        # Get the project root (parent of flux_visualizer)
+        app_root = Path(__file__).parent.parent.parent
+        
+        # Default to data/orbits directory
+        if (app_root / "data/orbits").exists():
+            default_dir = str(app_root / "data/orbits")
+        elif (app_root / "data").exists():
+            default_dir = str(app_root / "data")
+        else:
+            default_dir = ""
+            
         file_paths, _ = QFileDialog.getOpenFileNames(
-            self, "Load Orbital File(s)", "", "CSV Files (*.csv);;All Files (*)"
+            self, "Load Orbital File(s)", default_dir, "CSV Files (*.csv);;All Files (*)"
         )
         
         if not file_paths:
@@ -853,12 +903,14 @@ class ElectronFluxVisualizerApp(QMainWindow):
             self.data_panel.add_orbital_file_widget(file_widget)
             self.loaded_orbital_files[file_path] = file_widget
             
+            # Notify analysis panel about the loaded satellite
+            self.analysis_panel.add_satellite_file(file_path, Path(file_path).name)
+            
             # Update visualization
             self._update_orbital_visualization()
             
-            # Setup time slider if this is the first orbital file
-            if len(self.loaded_orbital_files) == 1:
-                self.animation_panel.set_time_range(len(orbital_data) - 1)
+            # Update time slider range
+            self._update_time_slider_range()
             
             # Get info
             info = OrbitalDataLoader.get_trajectory_info(orbital_data)
@@ -889,14 +941,15 @@ class ElectronFluxVisualizerApp(QMainWindow):
             del self.loaded_orbital_files[file_path]
             del self.orbital_data_dict[file_path]
             
+            # Notify analysis panel about the removed satellite
+            self.analysis_panel.remove_satellite_file(file_path)
+            
             # UPDATED: Use new renderers to remove
             self.orbital_renderer.remove_path(file_path)
             self.satellite_renderer.remove_satellite(file_path)
             
-            # Update time slider
-            if len(self.loaded_orbital_files) == 0:
-                self.animation_panel.time_slider.setEnabled(False)
-                self.animation_panel.set_time_label("No data loaded")
+            # Update time slider range
+            self._update_time_slider_range()
             
             # Update status
             num_files = len(self.loaded_orbital_files)
@@ -1053,10 +1106,53 @@ class ElectronFluxVisualizerApp(QMainWindow):
         self.vtk_widget.GetRenderWindow().Render()
         # Stats will update via the timer/observer, not directly
     
+    def _has_time_dependent_data(self):
+        """Check if any time-dependent data is available for animation"""
+        # Check orbital data
+        if self.orbital_data_dict:
+            return True
+        
+        # Check time-dependent flux data
+        if hasattr(self.flux_field_renderer, 'time_dependent_data'):
+            for file_path, file_widget in self.loaded_files.items():
+                if file_widget.is_checked() and file_path in self.flux_field_renderer.time_dependent_data:
+                    return True
+        
+        return False
+    
+    def _get_max_time_steps(self):
+        """Get the maximum number of time steps from all available data"""
+        max_steps = 0
+        
+        # Check orbital data
+        if self.orbital_data_dict:
+            orbital_max = max(len(data) for data in self.orbital_data_dict.values())
+            max_steps = max(max_steps, orbital_max)
+        
+        # Check time-dependent flux data
+        if hasattr(self.flux_field_renderer, 'time_info'):
+            for file_path, file_widget in self.loaded_files.items():
+                if file_widget.is_checked() and file_path in self.flux_field_renderer.time_info:
+                    flux_steps = self.flux_field_renderer.time_info[file_path]['num_time_steps']
+                    max_steps = max(max_steps, flux_steps)
+        
+        return max_steps
+    
+    def _update_time_slider_range(self):
+        """Update time slider range based on available time-dependent data"""
+        max_steps = self._get_max_time_steps()
+        
+        if max_steps > 0:
+            self.animation_panel.set_time_range(max_steps - 1)
+            self.animation_panel.time_slider.setEnabled(True)
+        else:
+            self.animation_panel.time_slider.setEnabled(False)
+            self.animation_panel.set_time_label("No data loaded")
+    
     def _start_animation(self):
         """Start animation"""
-        if not self.orbital_data_dict:
-            QMessageBox.warning(self, "Warning", "Please load orbital data first")
+        if not self._has_time_dependent_data():
+            QMessageBox.warning(self, "Warning", "Please load orbital data or time-dependent flux data first")
             return
         
         self.is_playing = True
@@ -1087,14 +1183,15 @@ class ElectronFluxVisualizerApp(QMainWindow):
     
     def _animation_step(self):
         """Animation step"""
-        if self.orbital_data_dict:
-            # Use the longest orbital data for animation length
-            max_length = max(len(data) for data in self.orbital_data_dict.values())
-            
+        # Get maximum time steps from all available data
+        max_length = self._get_max_time_steps()
+        
+        if max_length > 0:
             if self.current_time_index >= max_length - 1:
                 self.current_time_index = 0
-                # ADDED: Clear trails when looping
-                self.satellite_renderer.clear_all_trails()
+                # Clear trails when looping
+                if hasattr(self, 'satellite_renderer'):
+                    self.satellite_renderer.clear_all_trails()
             else:
                 self.current_time_index += 1
             
@@ -1160,6 +1257,38 @@ class ElectronFluxVisualizerApp(QMainWindow):
                         f"{len(self.loaded_orbital_files)} orbit(s)"
                     )
         
+        # Update all open spectrum windows
+        for window_id, window in self.spectrum_windows.items():
+            window.set_current_time_index(self.current_time_index)
+        
+        # Update time-dependent flux fields
+        if self.vtk_data_dict:
+            current_time_hours = 0.0  # Default time
+            
+            # If we have orbital data, use its time
+            if self.orbital_data_dict:
+                first_orbital = list(self.orbital_data_dict.values())[0]
+                if 0 <= self.current_time_index < len(first_orbital):
+                    point = first_orbital[self.current_time_index]
+                    current_time_hours = point.time
+            else:
+                # No orbital data, but we might have time-dependent flux
+                # Use the current time index to find the time from flux data
+                for file_path, file_widget in self.loaded_files.items():
+                    if (file_widget.is_checked() and 
+                        hasattr(self.flux_field_renderer, 'time_info') and
+                        file_path in self.flux_field_renderer.time_info):
+                        time_info = self.flux_field_renderer.time_info[file_path]
+                        if self.current_time_index < len(time_info['time_values']):
+                            current_time_hours = time_info['time_values'][self.current_time_index]
+                            break
+            
+            # Update each loaded flux field
+            for file_path, file_widget in self.loaded_files.items():
+                if file_widget.is_checked():
+                    # Update flux field renderer to the appropriate time step
+                    self.flux_field_renderer.update_time_dependent_field(file_path, current_time_hours)
+        
         self.vtk_widget.GetRenderWindow().Render()
     
     
@@ -1169,3 +1298,292 @@ class ElectronFluxVisualizerApp(QMainWindow):
         if self.analysis_panel.get_current_mode() == "Flux Analysis":
             cross_section = self.analysis_panel.get_cross_section()
             self.flux_analyzer.set_cross_section(cross_section)
+        elif self.analysis_panel.get_current_mode() == "Spectrum Analysis":
+            # Update all open energy spectrum windows with new parameters
+            energy_range = self.analysis_panel.get_energy_range()
+            energy_bins = self.analysis_panel.get_energy_bins()
+            
+            for window_id, window in self.spectrum_windows.items():
+                if window_id.startswith("energy_spectrum_"):
+                    window.set_energy_parameters(energy_range, energy_bins)
+    
+    def _on_energy_spectrum_clicked(self, satellite_file_path):
+        """Handle energy spectrum button click"""
+        from .windows import EnergySpectrumWindow
+        
+        window_id = f"energy_spectrum_{satellite_file_path}"
+        if window_id in self.spectrum_windows:
+            self.spectrum_windows[window_id].show()
+            self.spectrum_windows[window_id].raise_()
+        else:
+            satellite_name = Path(satellite_file_path).name
+            window = EnergySpectrumWindow(satellite_file_path, satellite_name, self.config)
+            window.window_closed.connect(self._on_spectrum_window_closed)
+            
+            # Set orbital data
+            if satellite_file_path in self.orbital_data_dict:
+                orbital_data = self.orbital_data_dict[satellite_file_path]
+                window.set_orbital_data(orbital_data)
+            
+            # Set flux data if available
+            if self.vtk_data_dict:
+                # Use first available flux field (could be enhanced to let user choose)
+                first_flux_data = list(self.vtk_data_dict.values())[0]
+                window.set_flux_data(first_flux_data)
+            
+            # Get energy parameters from analysis panel
+            energy_range = self.analysis_panel.get_energy_range()
+            energy_bins = self.analysis_panel.get_energy_bins()
+            window.set_energy_parameters(energy_range, energy_bins)
+            
+            window.set_current_time_index(self.current_time_index)
+            self.spectrum_windows[window_id] = window
+            window.show()
+    
+    def _on_pitch_angle_clicked(self, satellite_file_path):
+        """Handle pitch angle button click"""
+        from .windows import PitchAngleWindow
+        
+        window_id = f"pitch_angle_{satellite_file_path}"
+        if window_id in self.spectrum_windows:
+            self.spectrum_windows[window_id].show()
+            self.spectrum_windows[window_id].raise_()
+        else:
+            satellite_name = Path(satellite_file_path).name
+            window = PitchAngleWindow(satellite_file_path, satellite_name, self.config)
+            window.window_closed.connect(self._on_spectrum_window_closed)
+            
+            if satellite_file_path in self.orbital_data_dict:
+                orbital_data = self.orbital_data_dict[satellite_file_path]
+                window.set_orbital_data(orbital_data)
+            
+            window.set_current_time_index(self.current_time_index)
+            self.spectrum_windows[window_id] = window
+            window.show()
+    
+    def _on_phase_space_clicked(self, satellite_file_path):
+        """Handle phase space button click"""
+        from .windows import PhaseSpaceWindow
+        
+        window_id = f"phase_space_{satellite_file_path}"
+        if window_id in self.spectrum_windows:
+            self.spectrum_windows[window_id].show()
+            self.spectrum_windows[window_id].raise_()
+        else:
+            satellite_name = Path(satellite_file_path).name
+            window = PhaseSpaceWindow(satellite_file_path, satellite_name, self.config)
+            window.window_closed.connect(self._on_spectrum_window_closed)
+            
+            if satellite_file_path in self.orbital_data_dict:
+                orbital_data = self.orbital_data_dict[satellite_file_path]
+                window.set_orbital_data(orbital_data)
+            
+            window.set_current_time_index(self.current_time_index)
+            self.spectrum_windows[window_id] = window
+            window.show()
+    
+    def _on_dose_calc_clicked(self):
+        """Handle dose calculator button click"""
+        try:
+            import matplotlib.pyplot as plt
+            
+            selected_satellite = self.analysis_panel._get_orbital_selected_satellite()
+            if not selected_satellite:
+                QMessageBox.warning(self, "Warning", "Please select a satellite for dose calculation")
+                return
+                
+            if selected_satellite not in self.orbital_data_dict:
+                QMessageBox.warning(self, "Warning", "Selected satellite data not found")
+                return
+            
+            cross_section = self.analysis_panel.get_orbital_cross_section(selected_satellite)
+            orbital_data = self.orbital_data_dict[selected_satellite]
+            
+            if not self.vtk_data_dict:
+                QMessageBox.warning(self, "Warning", "Please load flux field data first")
+                return
+            
+            flux_field = list(self.vtk_data_dict.values())[0]
+            self.flux_analyzer.set_vtk_data(flux_field)
+            self.flux_analyzer.set_orbital_data(orbital_data)
+            self.flux_analyzer.set_cross_section(cross_section)
+            
+            dose_data = self.flux_analyzer.calculate_dose_time_series(
+                cross_section_m2=cross_section,
+                particle_energy_MeV=1.0
+            )
+            
+            if dose_data:
+                self._create_dose_plot(dose_data, selected_satellite)
+            
+        except ImportError:
+            QMessageBox.critical(self, "Error", "matplotlib is required for dose plotting")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error calculating dose: {str(e)}")
+    
+    def _create_dose_plot(self, dose_data, satellite_file_path):
+        """Create dynamic dose time series plot"""
+        from .windows.dose_window import DoseWindow
+        
+        window_id = f"dose_{satellite_file_path}"
+        if window_id in self.spectrum_windows:
+            self.spectrum_windows[window_id].update_dose_data(dose_data)
+            self.spectrum_windows[window_id].show()
+            self.spectrum_windows[window_id].raise_()
+        else:
+            satellite_name = Path(satellite_file_path).name
+            window = DoseWindow(satellite_file_path, satellite_name, self.config, self)
+            window.window_closed.connect(self._on_spectrum_window_closed)
+            window.set_dose_data(dose_data)
+            window.set_current_time_index(self.current_time_index)
+            self.spectrum_windows[window_id] = window
+            window.show()
+    
+    def _on_spectrum_window_closed(self, window_id):
+        """Handle spectrum window being closed"""
+        if window_id in self.spectrum_windows:
+            del self.spectrum_windows[window_id]
+    
+    def _on_flux_time_clicked(self):
+        """Handle flux time analysis button click"""
+        try:
+            selected_satellite = self.analysis_panel._get_orbital_selected_satellite()
+            if not selected_satellite:
+                QMessageBox.warning(self, "Warning", "Please select a satellite for flux time analysis")
+                return
+                
+            QMessageBox.information(self, "Flux Time Analysis", 
+                f"Flux time analysis for {Path(selected_satellite).name} - Implementation coming soon!")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error in flux time analysis: {str(e)}")
+    
+    def _on_orbit_stats_clicked(self):
+        """Handle orbit statistics button click"""
+        try:
+            selected_satellite = self.analysis_panel._get_orbital_selected_satellite()
+            if not selected_satellite:
+                QMessageBox.warning(self, "Warning", "Please select a satellite for orbit statistics")
+                return
+                
+            if selected_satellite not in self.orbital_data_dict:
+                QMessageBox.warning(self, "Warning", "Selected satellite data not found")
+                return
+            
+            orbital_points = self.orbital_data_dict[selected_satellite]
+            
+            from core import OrbitalPath
+            orbital_path = OrbitalPath(orbital_points)
+            stats = orbital_path.get_statistics()
+            
+            stats_text = f"Orbital Statistics for {Path(selected_satellite).name}:\n\n"
+            if stats:
+                stats_text += f"Duration: {stats.get('duration_hours', 0):.1f} hours\n"
+                stats_text += f"Altitude: {stats.get('altitude_min_km', 0):.1f} - {stats.get('altitude_max_km', 0):.1f} km\n"
+                stats_text += f"Mean Altitude: {stats.get('altitude_mean_km', 0):.1f} km\n"
+                stats_text += f"Number of Points: {stats.get('num_points', 0)}\n"
+                if stats.get('orbital_period_hours'):
+                    stats_text += f"Orbital Period: {stats.get('orbital_period_hours', 0):.2f} hours\n"
+                if stats.get('speed_mean_km_s'):
+                    stats_text += f"Mean Speed: {stats.get('speed_mean_km_s', 0):.2f} km/s\n"
+            else:
+                stats_text += "No statistics available"
+                
+            QMessageBox.information(self, "Orbit Statistics", stats_text)
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error calculating orbit statistics: {str(e)}")
+    
+    def _on_ground_track_clicked(self):
+        """Handle ground track button click"""
+        try:
+            selected_satellite = self.analysis_panel._get_orbital_selected_satellite()
+            if not selected_satellite:
+                QMessageBox.warning(self, "Warning", "Please select a satellite for ground track analysis")
+                return
+                
+            QMessageBox.information(self, "Ground Track", 
+                f"Ground track visualization for {Path(selected_satellite).name} - Implementation coming soon!\n\n"
+                "This will show the satellite's path projected onto Earth's surface.")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error in ground track analysis: {str(e)}")
+    
+    def _on_altitude_profile_clicked(self):
+        """Handle altitude profile button click"""
+        try:
+            selected_satellite = self.analysis_panel._get_orbital_selected_satellite()
+            if not selected_satellite:
+                QMessageBox.warning(self, "Warning", "Please select a satellite for altitude profile")
+                return
+                
+            if selected_satellite not in self.orbital_data_dict:
+                QMessageBox.warning(self, "Warning", "Selected satellite data not found")
+                return
+            
+            orbital_points = self.orbital_data_dict[selected_satellite]
+            
+            from core import OrbitalPath
+            orbital_path = OrbitalPath(orbital_points)
+            alt_range = orbital_path.get_altitude_range()
+            stats = orbital_path.get_statistics()
+            
+            profile_text = f"Altitude Profile for {Path(selected_satellite).name}:\n\n"
+            profile_text += f"Minimum Altitude: {alt_range[0]:.1f} km\n"
+            profile_text += f"Maximum Altitude: {alt_range[1]:.1f} km\n"
+            if stats:
+                profile_text += f"Mean Altitude: {stats.get('altitude_mean_km', 0):.1f} km\n"
+                profile_text += f"Altitude Std Dev: {stats.get('altitude_std_km', 0):.1f} km\n"
+            profile_text += "\nDetailed altitude vs time plot - Implementation coming soon!"
+                
+            QMessageBox.information(self, "Altitude Profile", profile_text)
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error in altitude profile analysis: {str(e)}")
+    
+    def _on_peak_analysis_clicked(self):
+        """Handle peak analysis button click"""
+        try:
+            selected_satellite = self.analysis_panel._get_orbital_selected_satellite()
+            if not selected_satellite:
+                QMessageBox.warning(self, "Warning", "Please select a satellite for peak analysis")
+                return
+                
+            if selected_satellite not in self.orbital_data_dict:
+                QMessageBox.warning(self, "Warning", "Selected satellite data not found")
+                return
+                
+            if not self.vtk_data_dict:
+                QMessageBox.warning(self, "Warning", "Please load flux field data first")
+                return
+            
+            orbital_points = self.orbital_data_dict[selected_satellite]
+            flux_field = list(self.vtk_data_dict.values())[0]
+            self.flux_analyzer.set_vtk_data(flux_field)
+            self.flux_analyzer.set_orbital_data(orbital_points)
+            
+            cross_section = self.analysis_panel.get_orbital_cross_section(selected_satellite)
+            self.flux_analyzer.set_cross_section(cross_section)
+            
+            peak_regions = self.flux_analyzer.find_peak_exposure_regions(threshold_percentile=80)
+            
+            if peak_regions:
+                peak_text = f"Peak Flux Regions for {Path(selected_satellite).name}:\n\n"
+                peak_text += f"Found {len(peak_regions)} high-flux regions (>80th percentile):\n\n"
+                
+                for i, region in enumerate(peak_regions[:3]):
+                    peak_text += f"Region {i+1}:\n"
+                    peak_text += f"  Time: {region['start_time']:.2f} - {region['end_time']:.2f} hours\n"
+                    peak_text += f"  Duration: {region['duration']:.2f} hours\n"
+                    peak_text += f"  Max Flux: {region['max_flux']:.2e} particles/s\n"
+                    peak_text += f"  Altitude: {region['start_altitude']:.1f} - {region['end_altitude']:.1f} km\n\n"
+                    
+                if len(peak_regions) > 3:
+                    peak_text += f"... and {len(peak_regions) - 3} more regions"
+            else:
+                peak_text = f"No significant peak flux regions found for {Path(selected_satellite).name}"
+                
+            QMessageBox.information(self, "Peak Analysis", peak_text)
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error in peak analysis: {str(e)}")

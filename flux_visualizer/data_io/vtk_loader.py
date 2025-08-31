@@ -18,6 +18,7 @@ class VTKDataLoader:
         '.vtu': vtk.vtkXMLUnstructuredGridReader,   # XML Unstructured Grid
         '.vtp': vtk.vtkXMLPolyDataReader,          # XML PolyData
         '.vti': vtk.vtkXMLImageDataReader,         # XML Image Data
+        '.vtm': vtk.vtkXMLMultiBlockDataReader,    # XML MultiBlock Data (time series)
         '.vtk': None  # Legacy format - requires detection
     }
     
@@ -27,6 +28,7 @@ class VTKDataLoader:
         '.vtu': 'XML Unstructured Grid',
         '.vtp': 'XML PolyData',
         '.vti': 'XML Image Data',
+        '.vtm': 'XML MultiBlock Data (Time Series)',
         '.vtk': 'Legacy VTK'
     }
     
@@ -82,16 +84,32 @@ class VTKDataLoader:
         # Get the output
         output = reader.GetOutput()
         
-        # Validate the data
-        cls._validate_data(output)
-        
-        # Setup scalar data if needed
-        cls._setup_scalar_data(output)
+        # Handle multiblock data differently
+        if isinstance(output, vtk.vtkMultiBlockDataSet):
+            print(f"Multiblock dataset loaded with {output.GetNumberOfBlocks()} blocks")
+            # Don't validate individual blocks here - they will be extracted later
+        else:
+            # Validate the data for single datasets
+            cls._validate_data(output)
+            
+            # Setup scalar data if needed
+            cls._setup_scalar_data(output)
         
         print(f"Successfully loaded VTK data:")
         print(f"  Type: {type(output).__name__}")
-        print(f"  Points: {output.GetNumberOfPoints():,}")
-        print(f"  Cells: {output.GetNumberOfCells():,}")
+        
+        if isinstance(output, vtk.vtkMultiBlockDataSet):
+            print(f"  Blocks: {output.GetNumberOfBlocks()}")
+            # Show info for first block if available
+            if output.GetNumberOfBlocks() > 0:
+                first_block = output.GetBlock(0)
+                if first_block:
+                    print(f"  First block type: {type(first_block).__name__}")
+                    print(f"  First block points: {first_block.GetNumberOfPoints():,}")
+                    print(f"  First block cells: {first_block.GetNumberOfCells():,}")
+        else:
+            print(f"  Points: {output.GetNumberOfPoints():,}")
+            print(f"  Cells: {output.GetNumberOfCells():,}")
         
         return output
     
@@ -235,31 +253,66 @@ class VTKDataLoader:
         """
         info = {
             'type': type(vtk_data).__name__,
-            'num_points': vtk_data.GetNumberOfPoints(),
-            'num_cells': vtk_data.GetNumberOfCells(),
-            'bounds': vtk_data.GetBounds(),
             'scalar_range': None,
             'scalar_name': None,
             'arrays': []
         }
         
-        # Get scalar information
-        point_data = vtk_data.GetPointData()
-        scalar_array = point_data.GetScalars()
-        
-        if scalar_array:
-            info['scalar_name'] = scalar_array.GetName()
-            info['scalar_range'] = scalar_array.GetRange()
-        
-        # Get all arrays
-        for i in range(point_data.GetNumberOfArrays()):
-            array = point_data.GetArray(i)
-            info['arrays'].append({
-                'name': array.GetName(),
-                'num_tuples': array.GetNumberOfTuples(),
-                'num_components': array.GetNumberOfComponents(),
-                'range': array.GetRange() if array.GetNumberOfComponents() == 1 else None
-            })
+        if isinstance(vtk_data, vtk.vtkMultiBlockDataSet):
+            # Handle multiblock data
+            info['num_blocks'] = vtk_data.GetNumberOfBlocks()
+            info['num_points'] = 0
+            info['num_cells'] = 0
+            info['bounds'] = None
+            
+            # Get info from first block
+            if vtk_data.GetNumberOfBlocks() > 0:
+                first_block = vtk_data.GetBlock(0)
+                if first_block:
+                    info['num_points'] = first_block.GetNumberOfPoints()
+                    info['num_cells'] = first_block.GetNumberOfCells()
+                    info['bounds'] = first_block.GetBounds()
+                    
+                    # Get scalar info from first block
+                    point_data = first_block.GetPointData()
+                    scalar_array = point_data.GetScalars()
+                    
+                    if scalar_array:
+                        info['scalar_name'] = scalar_array.GetName()
+                        info['scalar_range'] = scalar_array.GetRange()
+                    
+                    # Get all arrays from first block
+                    for i in range(point_data.GetNumberOfArrays()):
+                        array = point_data.GetArray(i)
+                        info['arrays'].append({
+                            'name': array.GetName(),
+                            'num_tuples': array.GetNumberOfTuples(),
+                            'num_components': array.GetNumberOfComponents(),
+                            'range': array.GetRange() if array.GetNumberOfComponents() == 1 else None
+                        })
+        else:
+            # Handle single dataset
+            info['num_points'] = vtk_data.GetNumberOfPoints()
+            info['num_cells'] = vtk_data.GetNumberOfCells()
+            info['bounds'] = vtk_data.GetBounds()
+            
+            # Get scalar information for single dataset
+            point_data = vtk_data.GetPointData()
+            scalar_array = point_data.GetScalars()
+            
+            if scalar_array:
+                info['scalar_name'] = scalar_array.GetName()
+                info['scalar_range'] = scalar_array.GetRange()
+            
+            # Get all arrays for single dataset
+            for i in range(point_data.GetNumberOfArrays()):
+                array = point_data.GetArray(i)
+                info['arrays'].append({
+                    'name': array.GetName(),
+                    'num_tuples': array.GetNumberOfTuples(),
+                    'num_components': array.GetNumberOfComponents(),
+                    'range': array.GetRange() if array.GetNumberOfComponents() == 1 else None
+                })
         
         return info
     
@@ -413,3 +466,258 @@ class VTKDataLoader:
         total_mb = total_bytes / (1024 * 1024)
         
         return total_mb
+    
+    @classmethod
+    def is_time_dependent(cls, vtk_data: vtk.vtkDataObject) -> bool:
+        """
+        Check if VTK data contains time-dependent information.
+        
+        Args:
+            vtk_data: VTK data object
+            
+        Returns:
+            True if data is time-dependent (multiblock with time info or single dataset with multiple time arrays)
+        """
+        if isinstance(vtk_data, vtk.vtkMultiBlockDataSet):
+            # Check if field data contains time information
+            field_data = vtk_data.GetFieldData()
+            if field_data and field_data.GetArray("TimeValue"):
+                return True
+        else:
+            # Check single dataset for time-dependent arrays
+            # Look for field data with time_values array or multiple scalar arrays with time patterns
+            field_data = vtk_data.GetFieldData()
+            if field_data and field_data.GetArray("time_values"):
+                return True
+            
+            # Check for multiple scalar arrays with time patterns (e.g., "electron_flux_t+6h")
+            point_data = vtk_data.GetPointData()
+            time_arrays = []
+            for i in range(point_data.GetNumberOfArrays()):
+                array_name = point_data.GetArrayName(i)
+                if array_name and ("_t+" in array_name or "_t-" in array_name):
+                    time_arrays.append(array_name)
+            
+            if len(time_arrays) >= 2:  # Need at least 2 time steps for animation
+                return True
+                
+        return False
+    
+    @classmethod
+    def _get_single_dataset_time_values(cls, vtk_data: vtk.vtkDataObject) -> Optional[np.ndarray]:
+        """
+        Extract time values from single dataset with multiple time arrays.
+        
+        Args:
+            vtk_data: VTK single dataset
+            
+        Returns:
+            Array of time values or None if not time-dependent
+        """
+        import re
+        
+        # First check if there's a time_values array in field data
+        field_data = vtk_data.GetFieldData()
+        if field_data:
+            time_array = field_data.GetArray("time_values")
+            if time_array:
+                # Extract unique time values from the array
+                time_values = []
+                for i in range(time_array.GetNumberOfTuples()):
+                    time_values.append(time_array.GetValue(i))
+                
+                # Get unique values and sort them
+                unique_times = sorted(list(set(time_values)))
+                return np.array(unique_times)
+        
+        # Fall back to extracting time values from array names
+        point_data = vtk_data.GetPointData()
+        time_values = []
+        
+        # Pattern to match time strings like "t+6h", "t-6h"
+        time_pattern = r"_t([+-]?)(\d+)h"
+        
+        for i in range(point_data.GetNumberOfArrays()):
+            array_name = point_data.GetArrayName(i)
+            if array_name:
+                match = re.search(time_pattern, array_name)
+                if match:
+                    sign = match.group(1) or "+"
+                    hours = int(match.group(2))
+                    time_value = hours if sign == "+" else -hours
+                    time_values.append(time_value)
+        
+        if len(time_values) >= 2:
+            unique_times = sorted(list(set(time_values)))
+            return np.array(unique_times, dtype=float)
+        
+        return None
+    
+    @classmethod
+    def get_time_values(cls, multiblock_data: vtk.vtkMultiBlockDataSet) -> Optional[np.ndarray]:
+        """
+        Extract time values from multiblock dataset.
+        
+        Args:
+            multiblock_data: VTK multiblock dataset
+            
+        Returns:
+            Array of time values or None if not time-dependent
+        """
+        if not isinstance(multiblock_data, vtk.vtkMultiBlockDataSet):
+            return None
+        
+        field_data = multiblock_data.GetFieldData()
+        if not field_data:
+            return None
+        
+        time_array = field_data.GetArray("TimeValue")
+        if not time_array:
+            return None
+        
+        # Convert VTK array to numpy
+        n_times = time_array.GetNumberOfTuples()
+        time_values = np.zeros(n_times)
+        for i in range(n_times):
+            time_values[i] = time_array.GetValue(i)
+        
+        return time_values
+    
+    @classmethod
+    def get_time_step_data(cls, multiblock_data: vtk.vtkMultiBlockDataSet, time_index: int) -> Optional[vtk.vtkDataObject]:
+        """
+        Extract data for a specific time step from multiblock dataset.
+        
+        Args:
+            multiblock_data: VTK multiblock dataset
+            time_index: Time step index (0-based)
+            
+        Returns:
+            VTK data object for the specified time step or None
+        """
+        if not isinstance(multiblock_data, vtk.vtkMultiBlockDataSet):
+            return None
+        
+        if time_index < 0 or time_index >= multiblock_data.GetNumberOfBlocks():
+            return None
+        
+        return multiblock_data.GetBlock(time_index)
+    
+    @classmethod
+    def get_time_info(cls, vtk_data: vtk.vtkDataObject) -> Dict[str, Any]:
+        """
+        Get comprehensive time information from VTK dataset.
+        
+        Args:
+            vtk_data: VTK data object (multiblock or single dataset)
+            
+        Returns:
+            Dictionary containing time information
+        """
+        if isinstance(vtk_data, vtk.vtkMultiBlockDataSet):
+            # Handle multiblock datasets
+            time_values = cls.get_time_values(vtk_data)
+            
+            if time_values is None:
+                return {'is_time_dependent': False}
+            
+            return {
+                'is_time_dependent': True,
+                'num_time_steps': len(time_values),
+                'time_values': time_values,
+                'time_range': (time_values.min(), time_values.max()),
+                'time_step': time_values[1] - time_values[0] if len(time_values) > 1 else 0.0
+            }
+        
+        else:
+            # Handle single datasets with multiple time arrays
+            time_values = cls._get_single_dataset_time_values(vtk_data)
+            
+            if time_values is None:
+                return {'is_time_dependent': False}
+            
+            return {
+                'is_time_dependent': True,
+                'num_time_steps': len(time_values),
+                'time_values': time_values,
+                'time_range': (time_values.min(), time_values.max()),
+                'time_step': time_values[1] - time_values[0] if len(time_values) > 1 else 0.0
+            }
+    
+    @classmethod
+    def get_time_step_data(cls, vtk_data: vtk.vtkDataObject, time_index: int) -> Optional[vtk.vtkDataObject]:
+        """
+        Get data for a specific time step from time-dependent VTK data.
+        
+        Args:
+            vtk_data: VTK data object (multiblock or single dataset)
+            time_index: Time step index (0-based)
+            
+        Returns:
+            VTK data object for the specific time step
+        """
+        if isinstance(vtk_data, vtk.vtkMultiBlockDataSet):
+            return cls.get_time_step_multiblock(vtk_data, time_index)
+        else:
+            # For single datasets, create a copy and set the appropriate scalar array
+            return cls._get_single_dataset_time_step(vtk_data, time_index)
+    
+    @classmethod
+    def _get_single_dataset_time_step(cls, vtk_data: vtk.vtkDataObject, time_index: int) -> Optional[vtk.vtkDataObject]:
+        """
+        Get data for specific time step from single dataset with multiple time arrays.
+        
+        Args:
+            vtk_data: VTK single dataset
+            time_index: Time step index
+            
+        Returns:
+            VTK dataset with appropriate scalar array set for visualization
+        """
+        import re
+        
+        # Get time values to map index to actual time
+        time_values = cls._get_single_dataset_time_values(vtk_data)
+        if time_values is None or time_index >= len(time_values):
+            return None
+        
+        target_time = time_values[time_index]
+        
+        # Find the array name corresponding to this time
+        point_data = vtk_data.GetPointData()
+        target_array_name = None
+        
+        # Pattern to match time strings like "t+6h", "t-6h", "t+0h"
+        time_pattern = r"_t([+-]?)(\d+)h"
+        
+        print(f"Looking for time {target_time:+.0f}h among arrays:")
+        for i in range(point_data.GetNumberOfArrays()):
+            array_name = point_data.GetArrayName(i)
+            print(f"  Array {i}: {array_name}")
+            if array_name:
+                match = re.search(time_pattern, array_name)
+                if match:
+                    sign = match.group(1) or "+"
+                    hours = int(match.group(2))
+                    time_value = hours if sign == "+" else -hours
+                    print(f"    Parsed time: {time_value:+.0f}h")
+                    
+                    if abs(time_value - target_time) < 0.1:  # Allow small floating point tolerance
+                        target_array_name = array_name
+                        print(f"    MATCH! Using {array_name}")
+                        break
+        
+        if target_array_name is None:
+            return None
+        
+        # Create a shallow copy and set the target array as active scalars
+        output = vtk_data.NewInstance()
+        output.ShallowCopy(vtk_data)
+        
+        # Set the time-specific array as the active scalars
+        target_array = point_data.GetArray(target_array_name)
+        if target_array:
+            output.GetPointData().SetScalars(target_array)
+            print(f"Set active scalars to {target_array_name} for time step {time_index} (t={target_time:+.0f}h)")
+        
+        return output

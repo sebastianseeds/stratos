@@ -770,38 +770,35 @@ class EarthRenderer:
             VTK texture or None if file doesn't exist
         """
         try:
-            # Check in data/textures folder first, then resources/textures
-            texture_paths = [
-                Path("data/textures") / filename,
-                Path("resources/textures") / filename,
-                Path(filename),
-                Path(".") / filename
-            ]
+            # Get flux_visualizer directory
+            flux_viz_dir = Path(__file__).parent.parent     # Go up from scene/ to flux_visualizer/
             
-            for path in texture_paths:
-                if path.exists():
-                    # Create appropriate reader
-                    if path.suffix.lower() in ['.jpg', '.jpeg']:
-                        reader = vtk.vtkJPEGReader()
-                    elif path.suffix.lower() == '.png':
-                        reader = vtk.vtkPNGReader()
-                    else:
-                        continue
-                    
-                    reader.SetFileName(str(path))
-                    reader.Update()
-                    
-                    # Check if image loaded
-                    if reader.GetOutput().GetNumberOfPoints() == 0:
-                        continue
-                    
-                    # Create texture
-                    texture = vtk.vtkTexture()
-                    texture.SetInputConnection(reader.GetOutputPort())
-                    texture.InterpolateOn()
-                    
-                    print(f"Loaded texture from: {path}")
-                    return texture
+            # Textures are always in flux_visualizer/textures/
+            texture_path = flux_viz_dir / "textures" / filename
+            
+            if texture_path.exists():
+                # Create appropriate reader
+                if texture_path.suffix.lower() in ['.jpg', '.jpeg']:
+                    reader = vtk.vtkJPEGReader()
+                elif texture_path.suffix.lower() == '.png':
+                    reader = vtk.vtkPNGReader()
+                else:
+                    return None
+                
+                reader.SetFileName(str(texture_path))
+                reader.Update()
+                
+                # Check if image loaded
+                if reader.GetOutput().GetNumberOfPoints() == 0:
+                    return None
+                
+                # Create texture
+                texture = vtk.vtkTexture()
+                texture.SetInputConnection(reader.GetOutputPort())
+                texture.InterpolateOn()
+                
+                print(f"Loaded texture from: {texture_path}")
+                return texture
             
             return None
             

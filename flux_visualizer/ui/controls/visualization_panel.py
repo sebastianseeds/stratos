@@ -4,7 +4,7 @@ Visualization control panel for STRATOS
 
 from PyQt6.QtWidgets import (
     QGroupBox, QVBoxLayout, QHBoxLayout, QFormLayout,
-    QComboBox, QSlider, QLabel, QWidget, QCheckBox, QSpinBox, QLineEdit
+    QComboBox, QSlider, QLabel, QWidget, QCheckBox, QSpinBox, QLineEdit, QSizePolicy
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
@@ -25,11 +25,17 @@ class VisualizationPanel(QGroupBox):
         super().__init__("Field Visualization", parent)
         self.config = config
         self.loaded_files = {}  # Track loaded files
+        
+        # Set size policy to be more flexible
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.MinimumExpanding)
+        
         self._setup_ui()
     
     def _setup_ui(self):
         """Setup the panel UI"""
         self.main_layout = QVBoxLayout(self)
+        self.main_layout.setSpacing(4)  # Tighter vertical spacing
+        self.main_layout.setContentsMargins(8, 8, 8, 8)  # Tighter margins
         
         # File selector (initially hidden)
         file_layout = QHBoxLayout()
@@ -62,6 +68,7 @@ class VisualizationPanel(QGroupBox):
         # Dynamic content area
         self.dynamic_widget = QWidget()
         self.dynamic_layout = QVBoxLayout(self.dynamic_widget)
+        self.dynamic_layout.setSpacing(3)  # Compact spacing between dynamic elements
         self.main_layout.addWidget(self.dynamic_widget)
         
         # Initialize with default mode
@@ -110,7 +117,7 @@ class VisualizationPanel(QGroupBox):
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
         self.opacity_slider.setRange(0, 100)
         self.opacity_slider.setValue(70)
-        self.opacity_slider.setMinimumWidth(200)  # Standardized width
+        # Remove fixed width - let it scale with available space
         self.opacity_slider.valueChanged.connect(self._on_opacity_changed)
         opacity_layout.addWidget(self.opacity_slider)
         self.opacity_label = QLabel("70%")
@@ -144,7 +151,7 @@ class VisualizationPanel(QGroupBox):
         self.point_density_slider.setRange(self.config.MIN_POINT_DENSITY, 
                                           self.config.MAX_POINT_DENSITY)
         self.point_density_slider.setValue(self.config.DEFAULT_POINT_DENSITY)
-        self.point_density_slider.setMinimumWidth(200)  # Standardized width
+        # Remove fixed width - let it scale with available space
         self.point_density_slider.valueChanged.connect(self._on_density_changed)
         density_layout.addWidget(self.point_density_slider)
         self.density_label = QLabel(f"{self.config.DEFAULT_POINT_DENSITY}")
@@ -166,7 +173,7 @@ class VisualizationPanel(QGroupBox):
         self.point_size_slider.setRange(self.config.MIN_POINT_SIZE, 
                                        self.config.MAX_POINT_SIZE)
         self.point_size_slider.setValue(self.config.DEFAULT_POINT_SIZE)
-        self.point_size_slider.setMinimumWidth(200)  # Standardized width
+        # Remove fixed width - let it scale with available space
         self.point_size_slider.valueChanged.connect(self._on_size_changed)
         size_layout.addWidget(self.point_size_slider)
         self.size_label = QLabel(f"{self.config.DEFAULT_POINT_SIZE}km")
@@ -190,7 +197,7 @@ class VisualizationPanel(QGroupBox):
         self.threshold_slider = QSlider(Qt.Orientation.Horizontal)
         self.threshold_slider.setRange(0, 100)
         self.threshold_slider.setValue(50)
-        self.threshold_slider.setMinimumWidth(200)  # Standardized width
+        # Remove fixed width - let it scale with available space
         self.threshold_slider.valueChanged.connect(self._on_threshold_changed)
         threshold_layout.addWidget(self.threshold_slider)
         self.threshold_label = QLabel("50%")
@@ -225,7 +232,7 @@ class VisualizationPanel(QGroupBox):
         # Single Isosurface Controls (initially visible)
         self.single_iso_controls = QWidget()
         single_layout = QVBoxLayout(self.single_iso_controls)
-        single_layout.setContentsMargins(0, 5, 0, 5)
+        single_layout.setContentsMargins(0, 3, 0, 3)  # Tighter margins
         
         # Title for the control
         iso_title = QLabel("Contour Level:")
@@ -237,7 +244,7 @@ class VisualizationPanel(QGroupBox):
         self.isosurface_level_slider.setRange(10, 90)
         self.isosurface_level_slider.setValue(50)
         self.isosurface_level_slider.valueChanged.connect(self._on_isosurface_level_changed)
-        self.isosurface_level_slider.setMinimumWidth(200)
+        # Remove fixed width - let it scale with available space
         self.isosurface_level_slider.setToolTip("Adjust the contour level for single isosurface")
         single_layout.addWidget(self.isosurface_level_slider)
         
@@ -252,7 +259,7 @@ class VisualizationPanel(QGroupBox):
         # Multiple Isosurface Controls (initially hidden)
         self.multi_iso_controls = QWidget()
         multi_layout = QVBoxLayout(self.multi_iso_controls)
-        multi_layout.setContentsMargins(0, 5, 0, 5)
+        multi_layout.setContentsMargins(0, 3, 0, 3)  # Tighter margins
         
         # Title
         multi_title = QLabel("Multiple Isosurface Levels:")
@@ -299,7 +306,23 @@ class VisualizationPanel(QGroupBox):
         """Add slice plane specific controls"""
         slice_layout = QVBoxLayout()
         
-        # Slice axis/orientation
+        # Slice style selector (similar to isosurfaces)
+        style_row = self._create_aligned_row("Style", None)
+        self.slice_style_combo = QComboBox()
+        self.slice_style_combo.addItems([
+            "Single Slice",
+            "Three Plane Slice"
+        ])
+        self.slice_style_combo.currentTextChanged.connect(self._on_slice_style_changed)
+        style_row.addWidget(self.slice_style_combo)
+        slice_layout.addLayout(style_row)
+        
+        # Single Slice Controls (initially visible)
+        self.single_slice_controls = QWidget()
+        single_slice_layout = QVBoxLayout(self.single_slice_controls)
+        single_slice_layout.setContentsMargins(0, 3, 0, 3)  # Tighter margins
+        
+        # Slice axis/orientation for single slice
         axis_row = self._create_aligned_row("Orientation", None)
         self.slice_axis_combo = QComboBox()
         self.slice_axis_combo.addItems([
@@ -310,27 +333,92 @@ class VisualizationPanel(QGroupBox):
         self.slice_axis_combo.setCurrentText("Z-Axis (XY Plane)")
         self.slice_axis_combo.currentTextChanged.connect(self._on_slice_axis_changed)
         axis_row.addWidget(self.slice_axis_combo)
-        slice_layout.addLayout(axis_row)
+        single_slice_layout.addLayout(axis_row)
         
         # Slice position with label
         pos_title = QLabel("Slice Position:")
         pos_title.setStyleSheet("font-weight: bold; color: #666; font-size: 11px; margin-top: 5px;")
-        slice_layout.addWidget(pos_title)
+        single_slice_layout.addWidget(pos_title)
         
         # Position slider
         self.slice_pos_slider = QSlider(Qt.Orientation.Horizontal)
         self.slice_pos_slider.setRange(0, 100)
         self.slice_pos_slider.setValue(50)
-        self.slice_pos_slider.setMinimumWidth(200)
+        # Remove fixed width - let it scale with available space
         self.slice_pos_slider.valueChanged.connect(self._on_slice_pos_changed)
         self.slice_pos_slider.setToolTip("Adjust the position of the slice plane")
-        slice_layout.addWidget(self.slice_pos_slider)
+        single_slice_layout.addWidget(self.slice_pos_slider)
         
         # Position label (shows coordinate)
         self.slice_pos_label = QLabel("Center (0 km)")
         self.slice_pos_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.slice_pos_label.setStyleSheet("color: #5C6A72; font-size: 11px; margin-top: 2px;")
-        slice_layout.addWidget(self.slice_pos_label)
+        single_slice_layout.addWidget(self.slice_pos_label)
+        
+        slice_layout.addWidget(self.single_slice_controls)
+        
+        # Three Plane Slice Controls (initially hidden)
+        self.three_plane_controls = QWidget()
+        three_plane_layout = QVBoxLayout(self.three_plane_controls)
+        three_plane_layout.setContentsMargins(0, 3, 0, 3)  # Tighter margins
+        
+        # Title and description
+        three_plane_title = QLabel("Three Orthogonal Slices:")
+        three_plane_title.setStyleSheet("font-weight: bold; color: #666; font-size: 11px;")
+        three_plane_layout.addWidget(three_plane_title)
+        
+        three_plane_desc = QLabel("XY, XZ, and YZ planes intersecting at center")
+        three_plane_desc.setStyleSheet("color: #888; font-size: 10px; margin-bottom: 5px;")
+        three_plane_layout.addWidget(three_plane_desc)
+        
+        # Position controls for three planes
+        three_pos_title = QLabel("Intersection Position:")
+        three_pos_title.setStyleSheet("font-weight: bold; color: #666; font-size: 11px; margin-top: 5px;")
+        three_plane_layout.addWidget(three_pos_title)
+        
+        # X Position
+        x_layout = QHBoxLayout()
+        x_layout.addWidget(QLabel("X:"))
+        self.three_plane_x_slider = QSlider(Qt.Orientation.Horizontal)
+        self.three_plane_x_slider.setRange(0, 100)
+        self.three_plane_x_slider.setValue(50)
+        self.three_plane_x_slider.valueChanged.connect(self._on_three_plane_changed)
+        x_layout.addWidget(self.three_plane_x_slider)
+        self.three_plane_x_label = QLabel("50%")
+        self.three_plane_x_label.setMinimumWidth(35)
+        x_layout.addWidget(self.three_plane_x_label)
+        three_plane_layout.addLayout(x_layout)
+        
+        # Y Position
+        y_layout = QHBoxLayout()
+        y_layout.addWidget(QLabel("Y:"))
+        self.three_plane_y_slider = QSlider(Qt.Orientation.Horizontal)
+        self.three_plane_y_slider.setRange(0, 100)
+        self.three_plane_y_slider.setValue(50)
+        self.three_plane_y_slider.valueChanged.connect(self._on_three_plane_changed)
+        y_layout.addWidget(self.three_plane_y_slider)
+        self.three_plane_y_label = QLabel("50%")
+        self.three_plane_y_label.setMinimumWidth(35)
+        y_layout.addWidget(self.three_plane_y_label)
+        three_plane_layout.addLayout(y_layout)
+        
+        # Z Position  
+        z_layout = QHBoxLayout()
+        z_layout.addWidget(QLabel("Z:"))
+        self.three_plane_z_slider = QSlider(Qt.Orientation.Horizontal)
+        self.three_plane_z_slider.setRange(0, 100)
+        self.three_plane_z_slider.setValue(50)
+        self.three_plane_z_slider.valueChanged.connect(self._on_three_plane_changed)
+        z_layout.addWidget(self.three_plane_z_slider)
+        self.three_plane_z_label = QLabel("50%")
+        self.three_plane_z_label.setMinimumWidth(35)
+        z_layout.addWidget(self.three_plane_z_label)
+        three_plane_layout.addLayout(z_layout)
+        
+        slice_layout.addWidget(self.three_plane_controls)
+        
+        # Initially hide three-plane controls
+        self.three_plane_controls.setVisible(False)
         
         self.dynamic_layout.addLayout(slice_layout)
     
@@ -391,24 +479,24 @@ class VisualizationPanel(QGroupBox):
             QHBoxLayout with aligned label and widget
         """
         row_layout = QHBoxLayout()
-        row_layout.setContentsMargins(0, 2, 0, 2)
+        row_layout.setContentsMargins(0, 1, 0, 1)  # Tighter vertical margins on rows
         
-        # Create label with fixed width for alignment
+        # Create label with fixed width for alignment - reduce for tighter spacing
         label = QLabel(label_text)
-        label.setMinimumWidth(80)  # Fixed width for alignment
-        label.setMaximumWidth(80)
+        label.setMinimumWidth(70)  # Reduced width for more compact layout
+        label.setMaximumWidth(70)
         label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         row_layout.addWidget(label)
         
         # Add colon as separate label for perfect alignment
         colon_label = QLabel(":")
-        colon_label.setMinimumWidth(8)
-        colon_label.setMaximumWidth(8)
+        colon_label.setMinimumWidth(6)
+        colon_label.setMaximumWidth(6)
         colon_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         row_layout.addWidget(colon_label)
         
-        # Add some spacing
-        row_layout.addSpacing(6)
+        # Add some spacing - reduced for tighter layout
+        row_layout.addSpacing(4)
         
         # Add the widget or layout
         if hasattr(widget_or_layout, 'addWidget'):  # It's a layout
@@ -440,18 +528,54 @@ class VisualizationPanel(QGroupBox):
     
     def _on_slice_pos_changed(self, value):
         """Handle slice position change"""
-        # Update label to show position
-        if value == 50:
-            self.slice_pos_label.setText("Center (0 km)")
+        # Update label with km values if data bounds are available
+        if hasattr(self, 'data_bounds'):
+            self._update_single_slice_label(value)
         else:
-            offset = (value - 50) * 2  # Convert to percentage offset from center
-            self.slice_pos_label.setText(f"{value}% ({offset:+.0f}% from center)")
+            # Fallback to percentage display
+            if value == 50:
+                self.slice_pos_label.setText("Center (0 km)")
+            else:
+                offset = (value - 50) * 2
+                self.slice_pos_label.setText(f"{value}% ({offset:+.0f}% from center)")
         self.settings_changed.emit()
     
     def _on_slice_axis_changed(self, axis_text):
         """Handle slice axis change"""
         # Reset position to center when axis changes
         self.slice_pos_slider.setValue(50)
+        # Update the label with new axis bounds if available
+        if hasattr(self, 'data_bounds'):
+            self._update_single_slice_label(50)
+        self.settings_changed.emit()
+    
+    def _on_slice_style_changed(self, style):
+        """Handle slice style change"""
+        # Show/hide controls based on style
+        is_single = (style == "Single Slice")
+        self.single_slice_controls.setVisible(is_single)
+        self.three_plane_controls.setVisible(not is_single)
+        self.settings_changed.emit()
+    
+    def _on_three_plane_changed(self):
+        """Handle three-plane position changes"""
+        # Update labels with km values if data bounds are available
+        if hasattr(self, 'data_bounds'):
+            self._update_three_plane_labels()
+        else:
+            # Fallback to percentage display
+            if hasattr(self, 'three_plane_x_slider'):
+                x_val = self.three_plane_x_slider.value()
+                self.three_plane_x_label.setText(f"{x_val}%")
+            
+            if hasattr(self, 'three_plane_y_slider'):
+                y_val = self.three_plane_y_slider.value()
+                self.three_plane_y_label.setText(f"{y_val}%")
+                
+            if hasattr(self, 'three_plane_z_slider'):
+                z_val = self.three_plane_z_slider.value()
+                self.three_plane_z_label.setText(f"{z_val}%")
+        
         self.settings_changed.emit()
     
     def _on_flux_range_changed(self):
@@ -660,3 +784,101 @@ class VisualizationPanel(QGroupBox):
         if hasattr(self, 'slice_pos_slider'):
             return self.slice_pos_slider.value()
         return 50  # Default center
+    
+    def get_slice_style(self):
+        """Get the current slice style
+        
+        Returns:
+            str: "Single Slice" or "Three Plane Slice"
+        """
+        if hasattr(self, 'slice_style_combo'):
+            return self.slice_style_combo.currentText()
+        return "Single Slice"  # Default
+    
+    def get_three_plane_positions(self):
+        """Get the three-plane intersection positions
+        
+        Returns:
+            tuple: (x_percent, y_percent, z_percent)
+        """
+        if hasattr(self, 'three_plane_x_slider'):
+            x_pos = self.three_plane_x_slider.value()
+            y_pos = self.three_plane_y_slider.value()
+            z_pos = self.three_plane_z_slider.value()
+            return (x_pos, y_pos, z_pos)
+        return (50, 50, 50)  # Default center
+    
+    def update_slice_bounds(self, data_bounds):
+        """Update slice controls with actual data bounds for km display
+        
+        Args:
+            data_bounds: tuple of (xmin, xmax, ymin, ymax, zmin, zmax) in km
+        """
+        self.data_bounds = data_bounds
+        
+        # Update single slice position label if it exists
+        if hasattr(self, 'slice_pos_slider'):
+            self._update_single_slice_label(self.slice_pos_slider.value())
+        
+        # Update three-plane labels if they exist
+        if hasattr(self, 'three_plane_x_slider'):
+            self._update_three_plane_labels()
+    
+    def _update_single_slice_label(self, value):
+        """Update single slice position label with km values"""
+        if not hasattr(self, 'data_bounds') or not hasattr(self, 'slice_axis_combo'):
+            return
+            
+        axis_text = self.slice_axis_combo.currentText()
+        
+        # Determine which axis we're slicing along
+        if "X-Axis" in axis_text:
+            # YZ Plane - slicing along X axis
+            min_coord, max_coord = self.data_bounds[0], self.data_bounds[1]
+        elif "Y-Axis" in axis_text:
+            # XZ Plane - slicing along Y axis  
+            min_coord, max_coord = self.data_bounds[2], self.data_bounds[3]
+        else:
+            # XY Plane - slicing along Z axis
+            min_coord, max_coord = self.data_bounds[4], self.data_bounds[5]
+        
+        # Convert percentage to actual coordinate
+        coord_range = max_coord - min_coord
+        actual_coord = min_coord + (value / 100.0) * coord_range
+        
+        if abs(actual_coord) < 0.1:
+            self.slice_pos_label.setText("Center (0 km)")
+        else:
+            self.slice_pos_label.setText(f"{value}% ({actual_coord:+.1f} km)")
+    
+    def _update_three_plane_labels(self):
+        """Update three-plane position labels with km values"""
+        if not hasattr(self, 'data_bounds'):
+            return
+            
+        # X position (in km)
+        x_val = self.three_plane_x_slider.value()
+        x_range = self.data_bounds[1] - self.data_bounds[0]
+        x_coord = self.data_bounds[0] + (x_val / 100.0) * x_range
+        if abs(x_coord) < 0.1:
+            self.three_plane_x_label.setText("0 km")
+        else:
+            self.three_plane_x_label.setText(f"{x_coord:+.0f} km")
+        
+        # Y position (in km)
+        y_val = self.three_plane_y_slider.value()
+        y_range = self.data_bounds[3] - self.data_bounds[2]
+        y_coord = self.data_bounds[2] + (y_val / 100.0) * y_range
+        if abs(y_coord) < 0.1:
+            self.three_plane_y_label.setText("0 km")
+        else:
+            self.three_plane_y_label.setText(f"{y_coord:+.0f} km")
+        
+        # Z position (in km)
+        z_val = self.three_plane_z_slider.value()
+        z_range = self.data_bounds[5] - self.data_bounds[4]
+        z_coord = self.data_bounds[4] + (z_val / 100.0) * z_range
+        if abs(z_coord) < 0.1:
+            self.three_plane_z_label.setText("0 km")
+        else:
+            self.three_plane_z_label.setText(f"{z_coord:+.0f} km")

@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<VTKFile type="vtkMultiBlockDataSet" version="1.0" byte_order="LittleEndian" header_type="UInt32" compressor="vtkZLibDataCompressor">
+  <vtkMultiBlockDataSet>
+    <DataSet index="0" name="t=-12.0h" file="time_dependent_flux/time_dependent_flux_0.vts"/>
+    <DataSet index="1" name="t=-9.0h" file="time_dependent_flux/time_dependent_flux_1.vts"/>
+    <DataSet index="2" name="t=-6.0h" file="time_dependent_flux/time_dependent_flux_2.vts"/>
+    <DataSet index="3" name="t=-3.0h" file="time_dependent_flux/time_dependent_flux_3.vts"/>
+    <DataSet index="4" name="t=+0.0h" file="time_dependent_flux/time_dependent_flux_4.vts"/>
+    <DataSet index="5" name="t=+3.0h" file="time_dependent_flux/time_dependent_flux_5.vts"/>
+    <DataSet index="6" name="t=+6.0h" file="time_dependent_flux/time_dependent_flux_6.vts"/>
+    <DataSet index="7" name="t=+9.0h" file="time_dependent_flux/time_dependent_flux_7.vts"/>
+    <DataSet index="8" name="t=+12.0h" file="time_dependent_flux/time_dependent_flux_8.vts"/>
+    <DataSet index="9" name="t=+15.0h" file="time_dependent_flux/time_dependent_flux_9.vts"/>
+    <DataSet index="10" name="t=+18.0h" file="time_dependent_flux/time_dependent_flux_10.vts"/>
+    <DataSet index="11" name="t=+21.0h" file="time_dependent_flux/time_dependent_flux_11.vts"/>
+    <DataSet index="12" name="t=+24.0h" file="time_dependent_flux/time_dependent_flux_12.vts"/>
+    <DataSet index="13" name="t=+27.0h" file="time_dependent_flux/time_dependent_flux_13.vts"/>
+    <DataSet index="14" name="t=+30.0h" file="time_dependent_flux/time_dependent_flux_14.vts"/>
+    <DataSet index="15" name="t=+33.0h" file="time_dependent_flux/time_dependent_flux_15.vts"/>
+    <DataSet index="16" name="t=+36.0h" file="time_dependent_flux/time_dependent_flux_16.vts"/>
+    <DataSet index="17" name="t=+39.0h" file="time_dependent_flux/time_dependent_flux_17.vts"/>
+    <DataSet index="18" name="t=+42.0h" file="time_dependent_flux/time_dependent_flux_18.vts"/>
+    <DataSet index="19" name="t=+45.0h" file="time_dependent_flux/time_dependent_flux_19.vts"/>
+    <DataSet index="20" name="t=+48.0h" file="time_dependent_flux/time_dependent_flux_20.vts"/>
+    <DataSet index="21" name="t=+51.0h" file="time_dependent_flux/time_dependent_flux_21.vts"/>
+    <DataSet index="22" name="t=+54.0h" file="time_dependent_flux/time_dependent_flux_22.vts"/>
+    <DataSet index="23" name="t=+57.0h" file="time_dependent_flux/time_dependent_flux_23.vts"/>
+    <DataSet index="24" name="t=+60.0h" file="time_dependent_flux/time_dependent_flux_24.vts"/>
+  </vtkMultiBlockDataSet>
+  <FieldData>
+    <DataArray type="Float64" Name="TimeValue" NumberOfTuples="25" format="binary" RangeMin="-12" RangeMax="60">
+      AQAAAACAAADIAAAATAAAAA==eJw1yUEKQEAAheFZOoL1rGZloZRSmoiInMnRHE34vM3X3wvhWbpeQmTJgv+K7GdkYsWaDVt27D/PrAc96knPetGr3vSuj3wDeGMPYQ==
+    </DataArray>
+  </FieldData>
+</VTKFile>

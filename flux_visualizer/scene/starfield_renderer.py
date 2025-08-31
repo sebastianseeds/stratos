@@ -125,34 +125,31 @@ class StarfieldRenderer:
     def _load_starfield_texture(self):
         """Load starfield texture from file or create procedural texture"""
         try:
-            # Try to find starfield.jpg in data/textures
-            texture_paths = [
-                Path("data/textures/starfield.jpg"),
-                Path("flux_visualizer/data/textures/starfield.jpg"),
-                Path("resources/textures/starfield.jpg"),
-                Path("starfield.jpg")
-            ]
+            # Get flux_visualizer directory
+            flux_viz_dir = Path(__file__).parent.parent     # Go up from scene/ to flux_visualizer/
             
-            for path in texture_paths:
-                if path.exists():
-                    print(f"Loading starfield texture from: {path}")
+            # Starfield texture is always in flux_visualizer/textures/
+            starfield_path = flux_viz_dir / "textures/starfield.jpg"
+            
+            if starfield_path.exists():
+                print(f"Loading starfield texture from: {starfield_path}")
+                
+                # Create JPEG reader
+                reader = vtk.vtkJPEGReader()
+                reader.SetFileName(str(starfield_path))
+                reader.Update()
+                
+                # Check if image loaded
+                if reader.GetOutput().GetNumberOfPoints() > 0:
+                    # Create texture
+                    texture = vtk.vtkTexture()
+                    texture.SetInputConnection(reader.GetOutputPort())
+                    texture.InterpolateOn()
+                    texture.RepeatOff()
+                    texture.EdgeClampOn()
                     
-                    # Create JPEG reader
-                    reader = vtk.vtkJPEGReader()
-                    reader.SetFileName(str(path))
-                    reader.Update()
-                    
-                    # Check if image loaded
-                    if reader.GetOutput().GetNumberOfPoints() > 0:
-                        # Create texture
-                        texture = vtk.vtkTexture()
-                        texture.SetInputConnection(reader.GetOutputPort())
-                        texture.InterpolateOn()
-                        texture.RepeatOff()
-                        texture.EdgeClampOn()
-                        
-                        print(f"Successfully loaded starfield texture: {path}")
-                        return texture
+                    print(f"Successfully loaded starfield texture: {starfield_path}")
+                    return texture
             
             # No texture file found, create procedural
             print("No starfield.jpg found, creating procedural starfield...")

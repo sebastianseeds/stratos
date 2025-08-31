@@ -19,6 +19,10 @@ class FluxFieldRenderer:
         self.renderer = renderer
         self.field_actors = {}  # Dict of file_path -> actor
         self.field_data = {}    # Dict of file_path -> processed data
+        self.field_particle_types = {}  # Dict of file_path -> particle type
+        self.time_dependent_data = {}  # Dict of file_path -> multiblock data
+        self.time_info = {}     # Dict of file_path -> time information
+        self.current_time_index = {}  # Dict of file_path -> current time index
         self.visualization_mode = "Point Cloud"
         
         # Point cloud settings
@@ -31,14 +35,16 @@ class FluxFieldRenderer:
         self.multiple_levels = [20, 40, 60, 80]  # percentiles
         
         # Slice plane settings
+        self.slice_style = "Single Slice"
         self.slice_axis = "Z-Axis (XY Plane)"
         self.slice_position = 50  # percentage
+        self.three_plane_positions = (50, 50, 50)  # x, y, z percentages
         
         # Scalar bar
         self.scalar_bar = None
         self.current_lut = None
         
-    def add_flux_field(self, file_path, vtk_data, color_lut=None, opacity=0.8, min_flux=None, max_flux=None):
+    def add_flux_field(self, file_path, vtk_data, color_lut=None, opacity=0.8, min_flux=None, max_flux=None, particle_type=None):
         """Add a flux field to the renderer
         
         Args:
@@ -48,14 +54,36 @@ class FluxFieldRenderer:
             opacity: Opacity value (0-1)
             min_flux: Minimum flux threshold (replaces zero values)
             max_flux: Maximum flux threshold (clips high values)
+            particle_type: Type of particle (e.g., 'electron', 'proton') for scale bar title
         """
+        from data_io import VTKDataLoader
+        
         # Remove existing actor if present
         self.remove_flux_field(file_path)
         
-        # Apply flux thresholds to data if specified
-        processed_data = self._apply_flux_thresholds(vtk_data, min_flux, max_flux)
+        # Check if this is time-dependent data
+        if VTKDataLoader.is_time_dependent(vtk_data):
+            print(f"Detected time-dependent flux field: {file_path}")
+            
+            # Store the multiblock data and time information
+            self.time_dependent_data[file_path] = vtk_data
+            self.time_info[file_path] = VTKDataLoader.get_time_info(vtk_data)
+            self.current_time_index[file_path] = 0  # Start with first time step
+            
+            print(f"Time steps: {self.time_info[file_path]['num_time_steps']}")
+            print(f"Time range: {self.time_info[file_path]['time_range']} hours")
+            
+            # Extract data for the first time step
+            current_data = VTKDataLoader.get_time_step_data(vtk_data, 0)
+            if current_data is None:
+                print(f"ERROR: Could not extract data for time step 0 from {file_path}")
+                return
+            processed_data = self._apply_flux_thresholds(current_data, min_flux, max_flux)
+        else:
+            # Static (non-time-dependent) data
+            processed_data = self._apply_flux_thresholds(vtk_data, min_flux, max_flux)
         
-        # Store the data
+        # Store the processed data for the current time step
         self.field_data[file_path] = processed_data
         
         # Create visualization based on current mode
@@ -70,12 +98,23 @@ class FluxFieldRenderer:
             actor = self._create_simple_visualization(processed_data, color_lut, opacity)
         
         if actor:
-            self.field_actors[file_path] = actor
-            self.renderer.AddActor(actor)
+            # Handle both single actors and lists of actors
+            if isinstance(actor, list):
+                # Store list of actors for three-plane mode
+                self.field_actors[file_path] = actor
+                for a in actor:
+                    self.renderer.AddActor(a)
+            else:
+                # Single actor for single slice mode
+                self.field_actors[file_path] = actor
+                self.renderer.AddActor(actor)
+            
+            # Store particle type
+            self.field_particle_types[file_path] = particle_type
             
             # Update scalar bar with the LUT from this field
             if color_lut:
-                self._update_scalar_bar(color_lut, processed_data)
+                self._update_scalar_bar(color_lut, processed_data, particle_type)
     
     def remove_flux_field(self, file_path):
         """Remove a flux field from the renderer
@@ -84,12 +123,184 @@ class FluxFieldRenderer:
             file_path: Path to the flux file (identifier)
         """
         if file_path in self.field_actors:
-            actor = self.field_actors[file_path]
-            self.renderer.RemoveActor(actor)
+            actor_or_list = self.field_actors[file_path]
+            # Handle both single actors and lists of actors
+            if isinstance(actor_or_list, list):
+                for actor in actor_or_list:
+                    self.renderer.RemoveActor(actor)
+            else:
+                self.renderer.RemoveActor(actor_or_list)
             del self.field_actors[file_path]
         
         if file_path in self.field_data:
             del self.field_data[file_path]
+            
+        if file_path in self.field_particle_types:
+            del self.field_particle_types[file_path]
+        
+        # Clean up time-dependent data
+        if file_path in self.time_dependent_data:
+            del self.time_dependent_data[file_path]
+        if file_path in self.time_info:
+            del self.time_info[file_path]
+        if file_path in self.current_time_index:
+            del self.current_time_index[file_path]
+    
+    def is_time_dependent(self, file_path):
+        """Check if a loaded flux field is time-dependent
+        
+        Args:
+            file_path: Path to the flux file (identifier)
+            
+        Returns:
+            True if the field has time-dependent data
+        """
+        return file_path in self.time_dependent_data
+    
+    def get_time_info(self, file_path):
+        """Get time information for a flux field
+        
+        Args:
+            file_path: Path to the flux file (identifier)
+            
+        Returns:
+            Dictionary with time information or None if not time-dependent
+        """
+        return self.time_info.get(file_path)
+    
+    def set_time_step(self, file_path, time_index):
+        """Set the current time step for a time-dependent flux field
+        
+        Args:
+            file_path: Path to the flux file (identifier)
+            time_index: Time step index (0-based)
+        """
+        if file_path not in self.time_dependent_data:
+            print(f"Warning: {file_path} is not time-dependent")
+            return
+        
+        from data_io import VTKDataLoader
+        
+        vtk_data = self.time_dependent_data[file_path]
+        time_info = self.time_info[file_path]
+        
+        # Validate time index
+        if time_index < 0 or time_index >= time_info['num_time_steps']:
+            print(f"Warning: Time index {time_index} out of range (0-{time_info['num_time_steps']-1})")
+            return
+        
+        # Update current time index
+        self.current_time_index[file_path] = time_index
+        
+        # Get data for the specified time step (works for both multiblock and single datasets)
+        time_step_data = VTKDataLoader.get_time_step_data(vtk_data, time_index)
+        if time_step_data is None:
+            print(f"Warning: Could not get data for time step {time_index}")
+            return
+        
+        # Apply thresholds (reuse settings from original load)
+        processed_data = self._apply_flux_thresholds(time_step_data)
+        
+        # Store the updated data
+        self.field_data[file_path] = processed_data
+        
+        # Remove existing actors
+        if file_path in self.field_actors:
+            actor_or_list = self.field_actors[file_path]
+            if isinstance(actor_or_list, list):
+                for actor in actor_or_list:
+                    self.renderer.RemoveActor(actor)
+            else:
+                self.renderer.RemoveActor(actor_or_list)
+        
+        # Create new visualization with updated data
+        color_lut = self.current_lut  # Use current color lookup table
+        opacity = 0.8  # Default opacity
+        
+        if self.visualization_mode == "Point Cloud":
+            actor = self._create_point_cloud(processed_data, color_lut, opacity)
+        elif self.visualization_mode == "Isosurfaces":
+            actor = self._create_isosurfaces(processed_data, color_lut, opacity)
+        elif self.visualization_mode == "Slice Planes":
+            actor = self._create_slice_plane(processed_data, color_lut, opacity)
+        else:
+            actor = self._create_simple_visualization(processed_data, color_lut, opacity)
+        
+        if actor:
+            # Add new actors to renderer
+            if isinstance(actor, list):
+                self.field_actors[file_path] = actor
+                for a in actor:
+                    self.renderer.AddActor(a)
+            else:
+                self.field_actors[file_path] = actor
+                self.renderer.AddActor(actor)
+            
+            # Update scalar bar
+            if color_lut:
+                particle_type = self.field_particle_types.get(file_path)
+                self._update_scalar_bar(color_lut, processed_data, particle_type)
+            
+            # Print time information
+            current_time = time_info['time_values'][time_index]
+            print(f"Updated to time step {time_index}: t = {current_time:.1f} hours")
+    
+    def get_current_time_step(self, file_path):
+        """Get the current time step index for a flux field
+        
+        Args:
+            file_path: Path to the flux file (identifier)
+            
+        Returns:
+            Current time step index or None if not time-dependent
+        """
+        return self.current_time_index.get(file_path)
+    
+    def get_current_time_value(self, file_path):
+        """Get the current time value for a flux field
+        
+        Args:
+            file_path: Path to the flux file (identifier)
+            
+        Returns:
+            Current time value in hours or None if not time-dependent
+        """
+        if file_path not in self.time_info:
+            return None
+        
+        time_index = self.current_time_index.get(file_path, 0)
+        time_values = self.time_info[file_path]['time_values']
+        
+        if time_index < len(time_values):
+            return time_values[time_index]
+        return None
+    
+    def update_time_dependent_field(self, file_path, target_time_hours):
+        """Update time-dependent flux field to the closest time step
+        
+        Args:
+            file_path: Path to the flux file (identifier)
+            target_time_hours: Target time in hours
+        """
+        if file_path not in self.time_dependent_data:
+            return  # Not a time-dependent field
+        
+        time_info = self.time_info[file_path]
+        time_values = time_info['time_values']
+        
+        # Find the closest time step
+        closest_index = 0
+        min_diff = abs(time_values[0] - target_time_hours)
+        
+        for i, time_val in enumerate(time_values):
+            diff = abs(time_val - target_time_hours)
+            if diff < min_diff:
+                min_diff = diff
+                closest_index = i
+        
+        # Only update if we need to change time steps
+        if self.current_time_index.get(file_path, 0) != closest_index:
+            self.set_time_step(file_path, closest_index)
     
     def _create_point_cloud(self, vtk_data, color_lut, opacity):
         """Create point cloud visualization of flux field
@@ -321,8 +532,13 @@ class FluxFieldRenderer:
         Args:
             opacity: Opacity value (0-1)
         """
-        for actor in self.field_actors.values():
-            actor.GetProperty().SetOpacity(opacity)
+        for actor_or_list in self.field_actors.values():
+            # Handle both single actors and lists of actors
+            if isinstance(actor_or_list, list):
+                for actor in actor_or_list:
+                    actor.GetProperty().SetOpacity(opacity)
+            else:
+                actor_or_list.GetProperty().SetOpacity(opacity)
     
     def toggle_visibility(self, visible):
         """Toggle visibility of all flux fields
@@ -330,13 +546,21 @@ class FluxFieldRenderer:
         Args:
             visible: True to show, False to hide
         """
-        for actor in self.field_actors.values():
-            actor.SetVisibility(visible)
+        for actor_or_list in self.field_actors.values():
+            # Handle both single actors and lists of actors
+            if isinstance(actor_or_list, list):
+                for actor in actor_or_list:
+                    actor.SetVisibility(visible)
+            else:
+                actor_or_list.SetVisibility(visible)
     
     def clear_all(self):
         """Remove all flux field visualizations"""
         for file_path in list(self.field_actors.keys()):
             self.remove_flux_field(file_path)
+        
+        # Clear particle types tracking
+        self.field_particle_types.clear()
         
         # Remove scalar bar
         self._remove_scalar_bar()
@@ -391,12 +615,13 @@ class FluxFieldRenderer:
         
         return new_data
     
-    def _update_scalar_bar(self, lut, vtk_data):
+    def _update_scalar_bar(self, lut, vtk_data, particle_type=None):
         """Update or create the scalar bar
         
         Args:
             lut: VTK lookup table
             vtk_data: VTK dataset for getting scalar range and name
+            particle_type: Type of particle for title
         """
         # Remove existing scalar bar if present
         self._remove_scalar_bar()
@@ -425,8 +650,12 @@ class FluxFieldRenderer:
         self.scalar_bar = vtk.vtkScalarBarActor()
         self.scalar_bar.SetLookupTable(lut)
         
-        # Set title and format
-        self.scalar_bar.SetTitle(f"{scalar_name}")
+        # Set title and format - use particle type if available
+        if particle_type:
+            title = f"{particle_type} flux"
+        else:
+            title = scalar_name if scalar_name != "electron_flux" else "electron flux"
+        self.scalar_bar.SetTitle(title)
         self.scalar_bar.GetTitleTextProperty().SetFontSize(14)
         self.scalar_bar.GetTitleTextProperty().SetBold(True)
         
@@ -578,7 +807,23 @@ class FluxFieldRenderer:
             opacity: Opacity value
             
         Returns:
-            VTK actor for the slice plane
+            VTK actor or list of actors for the slice planes
+        """
+        if self.slice_style == "Single Slice":
+            return self._create_single_slice(vtk_data, color_lut, opacity)
+        else:  # Three Plane Slice
+            return self._create_three_plane_slice(vtk_data, color_lut, opacity)
+    
+    def _create_single_slice(self, vtk_data, color_lut, opacity):
+        """Create single slice plane visualization
+        
+        Args:
+            vtk_data: VTK dataset containing the flux field
+            color_lut: Color lookup table
+            opacity: Opacity value
+            
+        Returns:
+            VTK actor for the single slice plane
         """
         # Get data bounds
         bounds = vtk_data.GetBounds()
@@ -627,8 +872,8 @@ class FluxFieldRenderer:
             plane_source.SetPoint1(bounds[1], bounds[2], origin[2])
             plane_source.SetPoint2(bounds[0], bounds[3], origin[2])
         
-        # Set resolution for smooth interpolation (higher = smoother)
-        resolution = 200  # Adjust this for quality vs performance
+        # Calculate adaptive resolution based on data size and performance target
+        resolution = self._calculate_adaptive_resolution(vtk_data, width, height)
         plane_source.SetXResolution(resolution)
         plane_source.SetYResolution(resolution)
         plane_source.Update()
@@ -680,6 +925,218 @@ class FluxFieldRenderer:
         
         return actor
     
+    def _create_three_plane_slice(self, vtk_data, color_lut, opacity):
+        """Create three orthogonal slice planes
+        
+        Args:
+            vtk_data: VTK dataset containing the flux field
+            color_lut: Color lookup table
+            opacity: Opacity value
+            
+        Returns:
+            List of VTK actors for the three slice planes
+        """
+        bounds = vtk_data.GetBounds()
+        x_pos, y_pos, z_pos = self.three_plane_positions
+        
+        actors = []
+        
+        # Create XY plane (normal along Z axis)
+        xy_actor = self._create_plane_at_position(
+            vtk_data, color_lut, opacity, bounds,
+            normal=[0, 0, 1],
+            position_percent=z_pos / 100.0,
+            axis_name="Z"
+        )
+        if xy_actor:
+            actors.append(xy_actor)
+        
+        # Create XZ plane (normal along Y axis)  
+        xz_actor = self._create_plane_at_position(
+            vtk_data, color_lut, opacity, bounds,
+            normal=[0, 1, 0],
+            position_percent=y_pos / 100.0,
+            axis_name="Y"
+        )
+        if xz_actor:
+            actors.append(xz_actor)
+        
+        # Create YZ plane (normal along X axis)
+        yz_actor = self._create_plane_at_position(
+            vtk_data, color_lut, opacity, bounds,
+            normal=[1, 0, 0],
+            position_percent=x_pos / 100.0,
+            axis_name="X"
+        )
+        if yz_actor:
+            actors.append(yz_actor)
+        
+        return actors
+    
+    def _create_plane_at_position(self, vtk_data, color_lut, opacity, bounds, normal, position_percent, axis_name):
+        """Helper method to create a single slice plane at specified position
+        
+        Args:
+            vtk_data: VTK dataset
+            color_lut: Color lookup table
+            opacity: Opacity value
+            bounds: Data bounds
+            normal: Plane normal vector [x, y, z]
+            position_percent: Position along axis (0.0-1.0)
+            axis_name: Axis name for plane dimensions
+            
+        Returns:
+            VTK actor for the slice plane
+        """
+        # Calculate plane origin based on normal direction
+        if normal[0] == 1:  # YZ plane
+            width = bounds[3] - bounds[2]   # Y extent
+            height = bounds[5] - bounds[4]  # Z extent
+            origin_coord = bounds[0] + position_percent * (bounds[1] - bounds[0])
+            origin = [origin_coord, (bounds[2]+bounds[3])/2, (bounds[4]+bounds[5])/2]
+            
+            plane_source = vtk.vtkPlaneSource()
+            plane_source.SetOrigin(origin[0], bounds[2], bounds[4])
+            plane_source.SetPoint1(origin[0], bounds[3], bounds[4])
+            plane_source.SetPoint2(origin[0], bounds[2], bounds[5])
+            
+        elif normal[1] == 1:  # XZ plane
+            width = bounds[1] - bounds[0]   # X extent
+            height = bounds[5] - bounds[4]  # Z extent
+            origin_coord = bounds[2] + position_percent * (bounds[3] - bounds[2])
+            origin = [(bounds[0]+bounds[1])/2, origin_coord, (bounds[4]+bounds[5])/2]
+            
+            plane_source = vtk.vtkPlaneSource()
+            plane_source.SetOrigin(bounds[0], origin[1], bounds[4])
+            plane_source.SetPoint1(bounds[1], origin[1], bounds[4])
+            plane_source.SetPoint2(bounds[0], origin[1], bounds[5])
+            
+        else:  # XY plane (normal[2] == 1)
+            width = bounds[1] - bounds[0]   # X extent
+            height = bounds[3] - bounds[2]  # Y extent
+            origin_coord = bounds[4] + position_percent * (bounds[5] - bounds[4])
+            origin = [(bounds[0]+bounds[1])/2, (bounds[2]+bounds[3])/2, origin_coord]
+            
+            plane_source = vtk.vtkPlaneSource()
+            plane_source.SetOrigin(bounds[0], bounds[2], origin[2])
+            plane_source.SetPoint1(bounds[1], bounds[2], origin[2])
+            plane_source.SetPoint2(bounds[0], bounds[3], origin[2])
+        
+        # Calculate adaptive resolution
+        resolution = self._calculate_adaptive_resolution(vtk_data, width, height)
+        plane_source.SetXResolution(resolution)
+        plane_source.SetYResolution(resolution)
+        plane_source.Update()
+        
+        # Use probe filter to interpolate data onto the plane
+        probe = vtk.vtkProbeFilter()
+        probe.SetInputData(plane_source.GetOutput())
+        probe.SetSourceData(vtk_data)
+        probe.Update()
+        
+        slice_data = probe.GetOutput()
+        
+        # Check if slice has data
+        if slice_data.GetNumberOfPoints() == 0:
+            return None
+        
+        # Create mapper
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputData(slice_data)
+        
+        # Apply color mapping
+        if color_lut:
+            scalar_array = vtk_data.GetPointData().GetScalars()
+            if scalar_array:
+                scalar_range = scalar_array.GetRange()
+                mapper.SetLookupTable(color_lut)
+                mapper.SetScalarRange(scalar_range)
+                mapper.SetScalarModeToUsePointData()
+                mapper.ColorByArrayComponent(scalar_array.GetName(), 0)
+        else:
+            mapper.ScalarVisibilityOff()
+        
+        # Create actor
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+        
+        # Set properties with slightly different opacity for multiple planes
+        prop = actor.GetProperty()
+        prop.SetOpacity(opacity * 0.7)  # Reduce opacity for multiple planes
+        prop.SetRepresentationToSurface()
+        
+        if not color_lut:
+            # Different default colors for different planes
+            if axis_name == "X":
+                prop.SetColor(0.8, 0.2, 0.2)  # Red for YZ plane
+            elif axis_name == "Y":
+                prop.SetColor(0.2, 0.8, 0.2)  # Green for XZ plane  
+            else:  # Z
+                prop.SetColor(0.2, 0.2, 0.8)  # Blue for XY plane
+        
+        # Add some lighting
+        prop.SetAmbient(0.2)
+        prop.SetDiffuse(0.8)
+        
+        return actor
+    
+    def _calculate_adaptive_resolution(self, vtk_data, plane_width, plane_height):
+        """Calculate optimal slice resolution based on data size and performance target
+        
+        Args:
+            vtk_data: The source VTK dataset
+            plane_width: Physical width of the slice plane
+            plane_height: Physical height of the slice plane
+            
+        Returns:
+            int: Resolution (number of points per dimension)
+        """
+        # Get data characteristics
+        num_points = vtk_data.GetNumberOfPoints()
+        num_cells = vtk_data.GetNumberOfCells()
+        
+        # Performance targets (adjust these based on your hardware)
+        target_slice_points = 50000  # Target ~50k points for good performance
+        min_resolution = 50          # Minimum quality threshold
+        max_resolution = 400         # Maximum for very fast systems
+        
+        # Calculate base resolution from data density
+        # More points in source = can afford higher slice resolution
+        if num_points < 50000:          # Small datasets
+            base_resolution = 100
+        elif num_points < 500000:       # Medium datasets  
+            base_resolution = 150
+        elif num_points < 2000000:      # Large datasets
+            base_resolution = 200
+        else:                           # Very large datasets
+            base_resolution = 250
+        
+        # Adjust for slice plane size (larger planes need more points for same density)
+        bounds = vtk_data.GetBounds()
+        max_data_extent = max(bounds[1]-bounds[0], bounds[3]-bounds[2], bounds[5]-bounds[4])
+        plane_diagonal = (plane_width**2 + plane_height**2)**0.5
+        size_factor = plane_diagonal / max_data_extent
+        
+        # Apply size adjustment
+        adjusted_resolution = int(base_resolution * (0.7 + 0.6 * size_factor))
+        
+        # Ensure we hit our target point count
+        current_points = adjusted_resolution * adjusted_resolution
+        if current_points > target_slice_points:
+            # Scale down to meet performance target
+            scale_factor = (target_slice_points / current_points)**0.5
+            adjusted_resolution = int(adjusted_resolution * scale_factor)
+        
+        # Apply bounds
+        final_resolution = max(min_resolution, min(adjusted_resolution, max_resolution))
+        
+        # Log resolution decision for debugging
+        total_slice_points = final_resolution * final_resolution
+        print(f"Slice resolution: {final_resolution}x{final_resolution} = {total_slice_points:,} points "
+              f"(data: {num_points:,} points)")
+        
+        return final_resolution
+    
     def set_slice_axis(self, axis):
         """Set the slice plane axis/orientation
         
@@ -700,4 +1157,26 @@ class FluxFieldRenderer:
         if position_percent != self.slice_position:
             self.slice_position = position_percent
             if self.visualization_mode == "Slice Planes":
+                self.refresh_all()
+    
+    def set_slice_style(self, style):
+        """Set the slice plane style
+        
+        Args:
+            style: "Single Slice" or "Three Plane Slice"
+        """
+        if style != self.slice_style:
+            self.slice_style = style
+            if self.visualization_mode == "Slice Planes":
+                self.refresh_all()
+    
+    def set_three_plane_positions(self, positions):
+        """Set the three-plane intersection positions
+        
+        Args:
+            positions: Tuple of (x_percent, y_percent, z_percent)
+        """
+        if positions != self.three_plane_positions:
+            self.three_plane_positions = positions
+            if self.visualization_mode == "Slice Planes" and self.slice_style == "Three Plane Slice":
                 self.refresh_all()

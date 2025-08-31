@@ -1,0 +1,36 @@
+{
+  "description": "Time-dependent Van Allen belt flux during CME",
+  "file_type": "vtk_structured_grid_series",
+  "time_start": -6.0,
+  "time_end": 18.0,
+  "time_step": 3.0,
+  "n_timesteps": 9,
+  "files": [
+    "flux_t-06h.vts",
+    "flux_t-03h.vts",
+    "flux_t+00h.vts",
+    "flux_t+03h.vts",
+    "flux_t+06h.vts",
+    "flux_t+09h.vts",
+    "flux_t+12h.vts",
+    "flux_t+15h.vts",
+    "flux_t+18h.vts"
+  ],
+  "time_values": [
+    -6,
+    -3,
+    0,
+    3,
+    6,
+    9,
+    12,
+    15,
+    18
+  ],
+  "storm_phases": {
+    "pre_storm": "t < 0h",
+    "storm_onset": "t = 0-3h",
+    "main_phase": "t = 3-9h",
+    "recovery": "t > 9h"
+  }
+}

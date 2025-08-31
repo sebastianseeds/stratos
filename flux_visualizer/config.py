@@ -172,8 +172,8 @@ class Config:
     MAIN_WINDOW_START_X = 100
     MAIN_WINDOW_START_Y = 100
     
-    # Control panel (increased by 20%)
-    CONTROL_PANEL_MIN_WIDTH = 450
+    # Control panel - more flexible for small screens
+    CONTROL_PANEL_MIN_WIDTH = 280  # Reduced from 450 for small monitors
     CONTROL_PANEL_MAX_WIDTH = 450
     
     # Splitter sizes

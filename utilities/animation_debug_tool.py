@@ -15,7 +15,7 @@ def test_orbital_file(filename):
     print("-" * 50)
     
     if not Path(filename).exists():
-        print(f"❌ File not found: {filename}")
+        print(f"File not found: {filename}")
         return False
         
     try:
@@ -84,7 +84,7 @@ def test_orbital_file(filename):
         return True
         
     except Exception as e:
-        print(f"❌ Error loading file: {e}")
+        print(f"Error loading file: {e}")
         return False
 
 def create_animation_timing_plot():

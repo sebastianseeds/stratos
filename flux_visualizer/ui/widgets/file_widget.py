@@ -110,3 +110,7 @@ class LoadedFileWidget(QWidget):
     def is_checked(self):
         """Check if the file is enabled for visualization"""
         return self.checkbox.isChecked()
+    
+    def get_display_name(self):
+        """Get the display name for this file"""
+        return self.label.text()

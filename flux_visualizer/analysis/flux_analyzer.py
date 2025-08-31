@@ -210,3 +210,107 @@ class FluxAnalyzer:
             'dose_mGy': dose_Gy * 1000,
             'assumed_energy_MeV': particle_energy_MeV
         }
+    
+    def calculate_dose_time_series(self, cross_section_m2: float = 1.0, particle_energy_MeV: float = 1.0) -> Dict[str, any]:
+        """
+        Calculate dose rate time series along orbital path.
+        
+        Args:
+            cross_section_m2: Cross section in m²
+            particle_energy_MeV: Average particle energy in MeV
+            
+        Returns:
+            Dictionary with time series data for plotting
+        """
+        if not self.orbital_path or not self.vtk_data:
+            return {}
+        
+        times = []
+        dose_rates = []
+        cumulative_dose = []
+        altitudes = []
+        
+        cumulative_dose_value = 0.0
+        joules_per_MeV = 1.60218e-13
+        
+        # Sample flux at each orbital point
+        for i, point in enumerate(self.orbital_path):
+            times.append(point.time)
+            altitudes.append(point.altitude)
+            
+            # Get flux at this position
+            flux = self._sample_flux_at_position(point.x, point.y, point.z)
+            
+            # Convert flux to dose rate
+            # flux is in particles/(cm²·s·sr·MeV)  
+            # Convert to particles/(m²·s) by multiplying by cross_section_m2 * 10000 (cm²/m²)
+            particle_rate = flux * cross_section_m2 * 10000  # particles/s hitting cross section
+            
+            # Convert to energy rate (J/s)
+            energy_rate_J_per_s = particle_rate * particle_energy_MeV * joules_per_MeV
+            
+            # Convert to dose rate (Gy/s) assuming 1 kg mass
+            mass_kg = 1.0
+            dose_rate_Gy_per_s = energy_rate_J_per_s / mass_kg
+            dose_rate_mGy_per_s = dose_rate_Gy_per_s * 1000
+            
+            dose_rates.append(dose_rate_mGy_per_s)
+            
+            # Calculate cumulative dose (integrate over time)
+            if i > 0:
+                dt = times[i] - times[i-1]  # Time step in hours
+                dt_seconds = dt * 3600  # Convert to seconds
+                cumulative_dose_value += dose_rate_Gy_per_s * dt_seconds
+            
+            cumulative_dose.append(cumulative_dose_value * 1000)  # Convert to mGy
+        
+        return {
+            'times': np.array(times),
+            'dose_rates_mGy_per_s': np.array(dose_rates),
+            'cumulative_dose_mGy': np.array(cumulative_dose),
+            'altitudes': np.array(altitudes),
+            'cross_section_m2': cross_section_m2,
+            'particle_energy_MeV': particle_energy_MeV,
+            'time_range_hours': (times[0], times[-1]) if times else (0, 0)
+        }
+    
+    def _sample_flux_at_position(self, x: float, y: float, z: float) -> float:
+        """
+        Sample flux at a specific position.
+        
+        Args:
+            x, y, z: Position coordinates in km
+            
+        Returns:
+            Flux value at the position
+        """
+        # Create a temporary OrbitalPoint for the existing analyze_flux_at_point method
+        temp_point = OrbitalPoint(time=0.0, x=x, y=y, z=z)
+        
+        # Use existing method but return raw flux density instead of integrated flux
+        if not self.vtk_data:
+            return 0.0
+        
+        # Create a probe to sample the field at this point
+        probe = vtk.vtkProbeFilter()
+        
+        # Create a point to probe
+        points = vtk.vtkPoints()
+        points.InsertNextPoint(x, y, z)
+        
+        polydata = vtk.vtkPolyData()
+        polydata.SetPoints(points)
+        
+        probe.SetInputData(polydata)
+        probe.SetSourceData(self.vtk_data)
+        probe.Update()
+        
+        # Get the flux value
+        result = probe.GetOutput()
+        
+        if result.GetNumberOfPoints() > 0:
+            scalar_array = result.GetPointData().GetScalars()
+            if scalar_array and scalar_array.GetNumberOfTuples() > 0:
+                return scalar_array.GetValue(0)  # Return raw flux density
+        
+        return 0.0

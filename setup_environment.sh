@@ -87,6 +87,17 @@ else
     echo "5. Check VTK documentation: https://vtk.org/download/"
 fi
 
+# Install STRATOS package in development mode
+echo ""
+echo "Installing STRATOS package..."
+if pip install -e .; then
+    echo "✓ STRATOS package installed in development mode"
+else
+    echo "✗ Failed to install STRATOS package"
+    echo "You may need to set PYTHONPATH manually:"
+    echo "  export PYTHONPATH=\$PYTHONPATH:\$(pwd)"
+fi
+
 echo ""
 echo "Environment setup complete!"
 echo ""

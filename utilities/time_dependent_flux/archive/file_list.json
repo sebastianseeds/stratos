@@ -1,0 +1,217 @@
+[
+  {
+    "time": -12.0,
+    "filename": "flux_t-012.0h.vts",
+    "dst_index": -14.596460556435371
+  },
+  {
+    "time": -10.0,
+    "filename": "flux_t-010.0h.vts",
+    "dst_index": -9.019788196669193
+  },
+  {
+    "time": -8.0,
+    "filename": "flux_t-008.0h.vts",
+    "dst_index": -10.282391119564368
+  },
+  {
+    "time": -6.0,
+    "filename": "flux_t-006.0h.vts",
+    "dst_index": 3.6830535605405306
+  },
+  {
+    "time": -4.0,
+    "filename": "flux_t-004.0h.vts",
+    "dst_index": -13.513366776772086
+  },
+  {
+    "time": -2.0,
+    "filename": "flux_t-002.0h.vts",
+    "dst_index": -7.791110458482123
+  },
+  {
+    "time": 0.0,
+    "filename": "flux_t+000.0h.vts",
+    "dst_index": -10.0
+  },
+  {
+    "time": 2.0,
+    "filename": "flux_t+002.0h.vts",
+    "dst_index": -167.32050807568876
+  },
+  {
+    "time": 4.0,
+    "filename": "flux_t+004.0h.vts",
+    "dst_index": -139.49458081029448
+  },
+  {
+    "time": 6.0,
+    "filename": "flux_t+006.0h.vts",
+    "dst_index": -150.0
+  },
+  {
+    "time": 8.0,
+    "filename": "flux_t+008.0h.vts",
+    "dst_index": -150.0
+  },
+  {
+    "time": 10.0,
+    "filename": "flux_t+010.0h.vts",
+    "dst_index": -128.50744148468598
+  },
+  {
+    "time": 12.0,
+    "filename": "flux_t+012.0h.vts",
+    "dst_index": -110.31438348033049
+  },
+  {
+    "time": 14.0,
+    "filename": "flux_t+014.0h.vts",
+    "dst_index": -94.91429235976868
+  },
+  {
+    "time": 16.0,
+    "filename": "flux_t+016.0h.vts",
+    "dst_index": -81.87839666456289
+  },
+  {
+    "time": 18.0,
+    "filename": "flux_t+018.0h.vts",
+    "dst_index": -70.84374919099095
+  },
+  {
+    "time": 20.0,
+    "filename": "flux_t+020.0h.vts",
+    "dst_index": -61.503121764001925
+  },
+  {
+    "time": 22.0,
+    "filename": "flux_t+022.0h.vts",
+    "dst_index": -53.59645134804367
+  },
+  {
+    "time": 24.0,
+    "filename": "flux_t+024.0h.vts",
+    "dst_index": -46.90359933620175
+  },
+  {
+    "time": 26.0,
+    "filename": "flux_t+026.0h.vts",
+    "dst_index": -41.238222420780176
+  },
+  {
+    "time": 28.0,
+    "filename": "flux_t+028.0h.vts",
+    "dst_index": -36.442584397258656
+  },
+  {
+    "time": 30.0,
+    "filename": "flux_t+030.0h.vts",
+    "dst_index": -32.38316445115714
+  },
+  {
+    "time": 32.0,
+    "filename": "flux_t+032.0h.vts",
+    "dst_index": -28.946939653125778
+  },
+  {
+    "time": 34.0,
+    "filename": "flux_t+034.0h.vts",
+    "dst_index": -26.03823815897628
+  },
+  {
+    "time": 36.0,
+    "filename": "flux_t+036.0h.vts",
+    "dst_index": -23.576075501016707
+  },
+  {
+    "time": 38.0,
+    "filename": "flux_t+038.0h.vts",
+    "dst_index": -21.49189980734583
+  },
+  {
+    "time": 40.0,
+    "filename": "flux_t+040.0h.vts",
+    "dst_index": -19.72768317119222
+  },
+  {
+    "time": 42.0,
+    "filename": "flux_t+042.0h.vts",
+    "dst_index": -18.234306029940186
+  },
+  {
+    "time": 44.0,
+    "filename": "flux_t+044.0h.vts",
+    "dst_index": -16.970189571500953
+  },
+  {
+    "time": 46.0,
+    "filename": "flux_t+046.0h.vts",
+    "dst_index": -15.900138091298697
+  },
+  {
+    "time": 48.0,
+    "filename": "flux_t+048.0h.vts",
+    "dst_index": -14.994359068615335
+  },
+  {
+    "time": 50.0,
+    "filename": "flux_t+050.0h.vts",
+    "dst_index": -14.22763367912459
+  },
+  {
+    "time": 52.0,
+    "filename": "flux_t+052.0h.vts",
+    "dst_index": -13.578614648911037
+  },
+  {
+    "time": 54.0,
+    "filename": "flux_t+054.0h.vts",
+    "dst_index": -13.029231900729032
+  },
+  {
+    "time": 56.0,
+    "filename": "flux_t+056.0h.vts",
+    "dst_index": -12.564189444422786
+  },
+  {
+    "time": 58.0,
+    "filename": "flux_t+058.0h.vts",
+    "dst_index": -12.170539503861304
+  },
+  {
+    "time": 60.0,
+    "filename": "flux_t+060.0h.vts",
+    "dst_index": -11.837322023171735
+  },
+  {
+    "time": 62.0,
+    "filename": "flux_t+062.0h.vts",
+    "dst_index": -11.555259515353923
+  },
+  {
+    "time": 64.0,
+    "filename": "flux_t+064.0h.vts",
+    "dst_index": -11.31649875720933
+  },
+  {
+    "time": 66.0,
+    "filename": "flux_t+066.0h.vts",
+    "dst_index": -11.114392138818904
+  },
+  {
+    "time": 68.0,
+    "filename": "flux_t+068.0h.vts",
+    "dst_index": -10.943312579871966
+  },
+  {
+    "time": 70.0,
+    "filename": "flux_t+070.0h.vts",
+    "dst_index": -10.798496859721036
+  },
+  {
+    "time": 72.0,
+    "filename": "flux_t+072.0h.vts",
+    "dst_index": -10.675912999136402
+  }
+]

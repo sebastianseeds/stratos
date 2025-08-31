@@ -196,7 +196,7 @@ def create_structured_grid_vtk(filename="electron_flux_structured.vts"):
     elapsed_time = time.time() - start_time
     flux_array_np = np.array(flux_values)
     
-    print(f"✓ Structured grid VTK file created!")
+    print(f"Structured grid VTK file created!")
     print(f"  Processing time: {elapsed_time:.1f} seconds")
     print(f"  Grid dimensions: {nx} × {ny} × {nz}")
     print(f"  Grid extent: ±{max_distance/1000:.0f} Mm (±{max_distance/earth_radius:.1f} Earth radii)")
@@ -300,7 +300,7 @@ def create_unstructured_grid_vtk(filename="electron_flux_unstructured.vtu"):
     elapsed_time = time.time() - start_time
     flux_array_np = np.array(flux_values)
     
-    print(f"✓ Unstructured grid VTK file created!")
+    print(f"Unstructured grid VTK file created!")
     print(f"  Processing time: {elapsed_time:.1f} seconds")
     print(f"  Significant points: {significant_points:,}")
     print(f"  Radial extent: {r_shells[0]/1000:.0f} to {r_shells[-1]/1000:.0f} Mm")
@@ -368,7 +368,7 @@ def create_legacy_vtk(filename="electron_flux_legacy.vtk"):
     elapsed_time = time.time() - start_time
     flux_array_np = np.array(flux_values)
     
-    print(f"✓ Legacy VTK file created!")
+    print(f"Legacy VTK file created!")
     print(f"  Processing time: {elapsed_time:.1f} seconds")
     print(f"  Dimensions: {nx} × {ny} × {nz}")
     print(f"  Spacing: {spacing:.0f} km")
@@ -465,7 +465,7 @@ def create_sample_orbital_data(filename="sample_orbit.csv", orbit_type="LEO"):
     df.to_csv(filename, index=False)
     
     elapsed_time = time.time() - start_time
-    print(f"  ✓ Orbital data created! ({elapsed_time:.2f}s)")
+    print(f"  Orbital data created! ({elapsed_time:.2f}s)")
     print(f"    Points: {n_points}, Period: {period}h, Alt: {altitude:,}km")
 
 def main():
@@ -509,7 +509,7 @@ def main():
     total_time = time.time() - overall_start
     
     print("\n" + "=" * 60)
-    print("✓ All corrected sample data generated successfully!")
+    print("All corrected sample data generated successfully!")
     print(f"  Total time: {total_time:.1f} seconds")
     print("\nGenerated files with Van Allen belt fixes:")
     print("  • flux_field_structured_fixed.vts   - XML structured grid (RECOMMENDED)")
@@ -521,12 +521,12 @@ def main():
     print("  • orbit_heo_detailed.csv            - HEO trajectory (through both belts)")
     
     print("\nKey fixes applied:")
-    print("  ✓ Extended data range to ±76,000 km (L-shell up to 12)")
-    print("  ✓ Corrected Van Allen belt magnetic orientation")
-    print("  ✓ Proper inner belt (L=1.2-2.8) and outer belt (L=3-8)")
-    print("  ✓ Magnetic dipole tilt (11° from rotation axis)")
-    print("  ✓ Day/night flux asymmetry")
-    print("  ✓ Latitudinal flux variations")
+    print("  Extended data range to ±76,000 km (L-shell up to 12)")
+    print("  Corrected Van Allen belt magnetic orientation")
+    print("  Proper inner belt (L=1.2-2.8) and outer belt (L=3-8)")
+    print("  Magnetic dipole tilt (11° from rotation axis)")
+    print("  Day/night flux asymmetry")
+    print("  Latitudinal flux variations")
     
     print("\nTo test:")
     print("  1. python flux_visualizer.py")

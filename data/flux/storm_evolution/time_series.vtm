@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<VTKFile type="vtkMultiBlockDataSet" version="1.0" byte_order="LittleEndian" header_type="UInt32" compressor="vtkZLibDataCompressor">
+  <vtkMultiBlockDataSet>
+    <DataSet index="0" name="t=-6h" file="time_series/time_series_0.vts"/>
+    <DataSet index="1" name="t=-3h" file="time_series/time_series_1.vts"/>
+    <DataSet index="2" name="t=+0h" file="time_series/time_series_2.vts"/>
+    <DataSet index="3" name="t=+3h" file="time_series/time_series_3.vts"/>
+    <DataSet index="4" name="t=+6h" file="time_series/time_series_4.vts"/>
+    <DataSet index="5" name="t=+9h" file="time_series/time_series_5.vts"/>
+    <DataSet index="6" name="t=+12h" file="time_series/time_series_6.vts"/>
+    <DataSet index="7" name="t=+15h" file="time_series/time_series_7.vts"/>
+    <DataSet index="8" name="t=+18h" file="time_series/time_series_8.vts"/>
+  </vtkMultiBlockDataSet>
+  <FieldData>
+    <DataArray type="Float64" Name="TimeValue" NumberOfTuples="9" format="binary" RangeMin="-6" RangeMax="18">
+      AQAAAACAAABIAAAAJAAAAA==eJxjYAABiQNgioEDSsMAhwOEloDSSlBaA0rrQWkjBwCQPAPr
+    </DataArray>
+    <Array type="String" Name="Description" NumberOfTuples="1" format="binary">
+      AQAAAACAAAA3AAAAPQAAAA==eJwFwdENgDAIBUBHeau4hP/VUkJCH0mFxvG9uxpxugtxiyeG1wfZ4ZUWRK9lVKjEbEpJe/BmrHn8OGMUfg==
+    </Array>
+  </FieldData>
+</VTKFile>
