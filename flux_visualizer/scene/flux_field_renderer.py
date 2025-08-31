@@ -939,6 +939,8 @@ class FluxFieldRenderer:
         bounds = vtk_data.GetBounds()
         x_pos, y_pos, z_pos = self.three_plane_positions
         
+        print(f"DEBUG: Creating three planes at positions: X={x_pos}%, Y={y_pos}%, Z={z_pos}%")
+        
         actors = []
         
         # Create XY plane (normal along Z axis)
@@ -950,6 +952,9 @@ class FluxFieldRenderer:
         )
         if xy_actor:
             actors.append(xy_actor)
+            print(f"DEBUG: Created XY plane actor")
+        else:
+            print(f"DEBUG: Failed to create XY plane actor")
         
         # Create XZ plane (normal along Y axis)  
         xz_actor = self._create_plane_at_position(
@@ -960,6 +965,9 @@ class FluxFieldRenderer:
         )
         if xz_actor:
             actors.append(xz_actor)
+            print(f"DEBUG: Created XZ plane actor")
+        else:
+            print(f"DEBUG: Failed to create XZ plane actor")
         
         # Create YZ plane (normal along X axis)
         yz_actor = self._create_plane_at_position(
@@ -970,7 +978,11 @@ class FluxFieldRenderer:
         )
         if yz_actor:
             actors.append(yz_actor)
+            print(f"DEBUG: Created YZ plane actor")
+        else:
+            print(f"DEBUG: Failed to create YZ plane actor")
         
+        print(f"DEBUG: Total actors created: {len(actors)}")
         return actors
     
     def _create_plane_at_position(self, vtk_data, color_lut, opacity, bounds, normal, position_percent, axis_name):

@@ -485,17 +485,21 @@ class VTKDataLoader:
                 return True
         else:
             # Check single dataset for time-dependent arrays
-            # Look for field data with time_values array or multiple scalar arrays with time patterns
+            # Look for field data with TimeValues array (our new format)
             field_data = vtk_data.GetFieldData()
-            if field_data and field_data.GetArray("time_values"):
+            if field_data and (field_data.GetArray("TimeValues") or field_data.GetArray("time_values")):
                 return True
             
-            # Check for multiple scalar arrays with time patterns (e.g., "electron_flux_t+6h")
+            # Check for multiple scalar arrays with time patterns
             point_data = vtk_data.GetPointData()
             time_arrays = []
             for i in range(point_data.GetNumberOfArrays()):
                 array_name = point_data.GetArrayName(i)
-                if array_name and ("_t+" in array_name or "_t-" in array_name):
+                if array_name and (
+                    "_t+" in array_name or 
+                    "_t-" in array_name or 
+                    "_t00" in array_name  # Our new format: electron_flux_t001, etc.
+                ):
                     time_arrays.append(array_name)
             
             if len(time_arrays) >= 2:  # Need at least 2 time steps for animation
@@ -516,36 +520,51 @@ class VTKDataLoader:
         """
         import re
         
-        # First check if there's a time_values array in field data
+        # First check if there's a TimeValues or time_values array in field data
         field_data = vtk_data.GetFieldData()
         if field_data:
-            time_array = field_data.GetArray("time_values")
+            # Try our new format first
+            time_array = field_data.GetArray("TimeValues")
+            if not time_array:
+                # Fall back to old format
+                time_array = field_data.GetArray("time_values")
+                
             if time_array:
-                # Extract unique time values from the array
+                # Extract time values from the array
                 time_values = []
                 for i in range(time_array.GetNumberOfTuples()):
                     time_values.append(time_array.GetValue(i))
                 
-                # Get unique values and sort them
-                unique_times = sorted(list(set(time_values)))
-                return np.array(unique_times)
+                # Return as sorted array
+                return np.array(sorted(time_values))
         
         # Fall back to extracting time values from array names
         point_data = vtk_data.GetPointData()
         time_values = []
         
-        # Pattern to match time strings like "t+6h", "t-6h"
-        time_pattern = r"_t([+-]?)(\d+)h"
+        # Pattern to match our new format: electron_flux_t000, electron_flux_t001, etc.
+        time_pattern_new = r"_t(\d{3})$"  # Matches _t000, _t001, etc.
+        
+        # Pattern to match old format: t+6h, t-6h, t+0h
+        time_pattern_old = r"_t([+-]?)(\d+)h"
         
         for i in range(point_data.GetNumberOfArrays()):
             array_name = point_data.GetArrayName(i)
             if array_name:
-                match = re.search(time_pattern, array_name)
-                if match:
-                    sign = match.group(1) or "+"
-                    hours = int(match.group(2))
-                    time_value = hours if sign == "+" else -hours
-                    time_values.append(time_value)
+                # Try new format first (electron_flux_t000, electron_flux_t001, etc.)
+                match_new = re.search(time_pattern_new, array_name)
+                if match_new:
+                    # For new format, we need to get the actual time values from TimeValues field data
+                    # For now, just store the index - will be resolved above by TimeValues array
+                    continue
+                else:
+                    # Fall back to old format (t+6h, t-6h, t+0h)
+                    match_old = re.search(time_pattern_old, array_name)
+                    if match_old:
+                        sign = match_old.group(1) or "+"
+                        hours = int(match_old.group(2))
+                        time_value = hours if sign == "+" else -hours
+                        time_values.append(time_value)
         
         if len(time_values) >= 2:
             unique_times = sorted(list(set(time_values)))
@@ -687,25 +706,40 @@ class VTKDataLoader:
         point_data = vtk_data.GetPointData()
         target_array_name = None
         
-        # Pattern to match time strings like "t+6h", "t-6h", "t+0h"
-        time_pattern = r"_t([+-]?)(\d+)h"
+        # Pattern to match our new format: electron_flux_t000, electron_flux_t001, etc.
+        time_pattern_new = r"_t(\d{3})$"  # Matches _t000, _t001, etc.
         
-        print(f"Looking for time {target_time:+.0f}h among arrays:")
+        # Pattern to match old format: t+6h, t-6h, t+0h
+        time_pattern_old = r"_t([+-]?)(\d+)h"
+        
+        print(f"Looking for time index {time_index} (time {target_time:.1f}h) among arrays:")
         for i in range(point_data.GetNumberOfArrays()):
             array_name = point_data.GetArrayName(i)
             print(f"  Array {i}: {array_name}")
             if array_name:
-                match = re.search(time_pattern, array_name)
-                if match:
-                    sign = match.group(1) or "+"
-                    hours = int(match.group(2))
-                    time_value = hours if sign == "+" else -hours
-                    print(f"    Parsed time: {time_value:+.0f}h")
+                # Try new format first (electron_flux_t000, electron_flux_t001, etc.)
+                match_new = re.search(time_pattern_new, array_name)
+                if match_new:
+                    array_time_index = int(match_new.group(1))
+                    print(f"    Parsed index (new format): {array_time_index}")
                     
-                    if abs(time_value - target_time) < 0.1:  # Allow small floating point tolerance
+                    if array_time_index == time_index:
                         target_array_name = array_name
                         print(f"    MATCH! Using {array_name}")
                         break
+                else:
+                    # Fall back to old format (t+6h, t-6h, t+0h)
+                    match_old = re.search(time_pattern_old, array_name)
+                    if match_old:
+                        sign = match_old.group(1) or "+"
+                        hours = int(match_old.group(2))
+                        time_value = hours if sign == "+" else -hours
+                        print(f"    Parsed time (old format): {time_value:+.0f}h")
+                        
+                        if abs(time_value - target_time) < 0.1:  # Allow small floating point tolerance
+                            target_array_name = array_name
+                            print(f"    MATCH! Using {array_name}")
+                            break
         
         if target_array_name is None:
             return None

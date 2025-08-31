@@ -749,6 +749,10 @@ class ElectronFluxVisualizerApp(QMainWindow):
             # Store VTK data
             self.vtk_data_dict[file_path] = vtk_data
             
+            # Update visualization panel with data bounds for slice controls
+            bounds = vtk_data.GetBounds()
+            self.viz_panel.update_slice_bounds(bounds)
+            
             # Create file widget
             file_widget = LoadedFileWidget(file_path, file_type="flux")
             file_widget.vtk_data = vtk_data
@@ -993,10 +997,18 @@ class ElectronFluxVisualizerApp(QMainWindow):
                         self.flux_field_renderer.set_multiple_isosurface_levels(levels)
                 
                 elif current_mode == "Slice Planes":
-                    axis = self.viz_panel.get_slice_axis()
-                    position = self.viz_panel.get_slice_position()
-                    self.flux_field_renderer.set_slice_axis(axis)
-                    self.flux_field_renderer.set_slice_position(position)
+                    # Get slice style to determine single vs three-plane mode
+                    slice_style = self.viz_panel.get_slice_style()
+                    self.flux_field_renderer.set_slice_style(slice_style)
+                    
+                    if slice_style == "Single Slice":
+                        axis = self.viz_panel.get_slice_axis()
+                        position = self.viz_panel.get_slice_position()
+                        self.flux_field_renderer.set_slice_axis(axis)
+                        self.flux_field_renderer.set_slice_position(position)
+                    else:  # Three Plane Slice
+                        positions = self.viz_panel.get_three_plane_positions()
+                        self.flux_field_renderer.set_three_plane_positions(positions)
                 
                 # Create color lookup table with flux range
                 scalar_range = vtk_data.GetScalarRange()

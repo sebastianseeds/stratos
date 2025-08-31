@@ -2,6 +2,8 @@
 Visualization control panel for STRATOS
 """
 
+print("LOADING visualization_panel.py - CHANGES SHOULD BE VISIBLE NOW")
+
 from PyQt6.QtWidgets import (
     QGroupBox, QVBoxLayout, QHBoxLayout, QFormLayout,
     QComboBox, QSlider, QLabel, QWidget, QCheckBox, QSpinBox, QLineEdit, QSizePolicy
@@ -346,6 +348,8 @@ class VisualizationPanel(QGroupBox):
         self.slice_pos_slider.setValue(50)
         # Remove fixed width - let it scale with available space
         self.slice_pos_slider.valueChanged.connect(self._on_slice_pos_changed)
+        # Also emit settings changed to trigger main window updates
+        self.slice_pos_slider.valueChanged.connect(lambda: self.settings_changed.emit())
         self.slice_pos_slider.setToolTip("Adjust the position of the slice plane")
         single_slice_layout.addWidget(self.slice_pos_slider)
         
@@ -528,16 +532,24 @@ class VisualizationPanel(QGroupBox):
     
     def _on_slice_pos_changed(self, value):
         """Handle slice position change"""
+        print(f"DEBUG: _on_slice_pos_changed called with value={value}")
+        print(f"DEBUG: hasattr data_bounds = {hasattr(self, 'data_bounds')}")
+        
         # Update label with km values if data bounds are available
         if hasattr(self, 'data_bounds'):
+            print(f"DEBUG: data_bounds = {self.data_bounds}")
             self._update_single_slice_label(value)
         else:
-            # Fallback to percentage display
+            print("DEBUG: Using fallback percentage display")
+            # Fallback to percentage display when no data bounds available
             if value == 50:
                 self.slice_pos_label.setText("Center (0 km)")
             else:
-                offset = (value - 50) * 2
-                self.slice_pos_label.setText(f"{value}% ({offset:+.0f}% from center)")
+                offset_percent = value - 50
+                self.slice_pos_label.setText(f"{value}% ({offset_percent:+.0f}% from center)")
+            # Keep the original generic tooltip when no bounds are available
+            print(f"DEBUG: Setting fallback tooltip for value {value}")
+            self.slice_pos_slider.setToolTip("Adjust the position of the slice plane")
         self.settings_changed.emit()
     
     def _on_slice_axis_changed(self, axis_text):
@@ -826,30 +838,45 @@ class VisualizationPanel(QGroupBox):
     
     def _update_single_slice_label(self, value):
         """Update single slice position label with km values"""
+        print(f"DEBUG: _update_single_slice_label called with value={value}")
+        
         if not hasattr(self, 'data_bounds') or not hasattr(self, 'slice_axis_combo'):
+            print("DEBUG: Missing data_bounds or slice_axis_combo")
             return
             
         axis_text = self.slice_axis_combo.currentText()
+        print(f"DEBUG: axis_text = {axis_text}")
         
         # Determine which axis we're slicing along
         if "X-Axis" in axis_text:
             # YZ Plane - slicing along X axis
             min_coord, max_coord = self.data_bounds[0], self.data_bounds[1]
+            axis_name = "X"
         elif "Y-Axis" in axis_text:
             # XZ Plane - slicing along Y axis  
             min_coord, max_coord = self.data_bounds[2], self.data_bounds[3]
+            axis_name = "Y"
         else:
             # XY Plane - slicing along Z axis
             min_coord, max_coord = self.data_bounds[4], self.data_bounds[5]
+            axis_name = "Z"
         
         # Convert percentage to actual coordinate
         coord_range = max_coord - min_coord
         actual_coord = min_coord + (value / 100.0) * coord_range
         
+        print(f"DEBUG: axis={axis_name}, min={min_coord}, max={max_coord}, actual_coord={actual_coord}")
+        
+        # Update label
         if abs(actual_coord) < 0.1:
             self.slice_pos_label.setText("Center (0 km)")
         else:
             self.slice_pos_label.setText(f"{value}% ({actual_coord:+.1f} km)")
+        
+        # Update tooltip with ONLY the position in km on the orthogonal axis
+        tooltip_text = f"{actual_coord:.1f} km"
+        print(f"DEBUG: Setting tooltip to: {tooltip_text}")
+        self.slice_pos_slider.setToolTip(tooltip_text)
     
     def _update_three_plane_labels(self):
         """Update three-plane position labels with km values"""

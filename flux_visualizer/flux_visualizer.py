@@ -3457,6 +3457,7 @@ For best results, use an equirectangular projection (2:1 aspect ratio).
 
     def update_slice_position(self, position_percent):
         """COMPACT: Update slice position with concise coordinate info"""
+        print(f"DEBUG: update_slice_position called with {position_percent}%")
         # More compact labeling
         if hasattr(self, 'vtk_data') and self.vtk_data:
             bounds = self.vtk_data.GetBounds()
@@ -3484,6 +3485,8 @@ For best results, use an equirectangular projection (2:1 aspect ratio).
                 position_name = "Center"
                 
             self.slice_position_label.setText(f"{position_name} ({axis_name}={coord_pos:.0f}km)")
+            # Update tooltip with just the km position
+            self.slice_position_slider.setToolTip(f"{coord_pos:.1f} km")
         else:
             if position_percent <= 25:
                 label = "Near"
@@ -3492,6 +3495,8 @@ For best results, use an equirectangular projection (2:1 aspect ratio).
             else:
                 label = "Center"
             self.slice_position_label.setText(f"{label} ({position_percent}%)")
+            # Fallback tooltip when no data bounds available
+            self.slice_position_slider.setToolTip("Adjust slice position")
         
         # Only update if we're in slice mode
         if not (self.viz_mode_combo.currentText() == "Slice Planes" and self.vtk_data):
