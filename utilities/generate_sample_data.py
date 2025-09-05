@@ -485,26 +485,26 @@ def main():
     
     # Create XML structured grid (recommended)
     print("\n1. XML Structured Grid (.vts) - EXTENDED RANGE")
-    create_structured_grid_vtk("flux_field_structured_fixed.vts")
+    create_structured_grid_vtk("../data/flux/static/flux_field_structured_fixed.vts")
     
     # Create XML unstructured grid  
     print("\n2. XML Unstructured Grid (.vtu) - EXTENDED RANGE")
-    create_unstructured_grid_vtk("flux_field_unstructured_fixed.vtu")
+    create_unstructured_grid_vtk("../data/flux/static/flux_field_unstructured_fixed.vtu")
     
     # Create legacy VTK
     print("\n3. Legacy VTK (.vtk) - EXTENDED RANGE")
-    create_legacy_vtk("flux_field_legacy_fixed.vtk")
+    create_legacy_vtk("../data/flux/static/flux_field_legacy_fixed.vtk")
     
     # Create orbital data including HEO that passes through belts
     print("\n" + "-" * 50)
     print("Generating orbital data...")
-    create_sample_orbital_data("orbit_leo_detailed.csv", "LEO")
+    create_sample_orbital_data("../data/orbits/orbit_leo_detailed.csv", "LEO")
     print()
-    create_sample_orbital_data("orbit_meo_detailed.csv", "MEO")
+    create_sample_orbital_data("../data/orbits/orbit_meo_detailed.csv", "MEO")
     print()
-    create_sample_orbital_data("orbit_geo_detailed.csv", "GEO")
+    create_sample_orbital_data("../data/orbits/orbit_geo_detailed.csv", "GEO")
     print()
-    create_sample_orbital_data("orbit_heo_detailed.csv", "HEO")  # New: passes through both belts
+    create_sample_orbital_data("../data/orbits/orbit_heo_detailed.csv", "HEO")  # New: passes through both belts
     
     total_time = time.time() - overall_start
     

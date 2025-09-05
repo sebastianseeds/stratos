@@ -1,12 +1,21 @@
-# Electron Flux Visualizer .gitignore
+# STRATOS - Space Trajectory Radiation Analysis Toolkit .gitignore
 
-# Generated data files
-*.vtk
-*.vtu
-*.vtp
-*.vts
-*.vti
-*.csv
+# User-generated data files (keep sample/example data)
+# Allow sample data in data/ directories but ignore user files elsewhere
+/*.vtk
+/*.vtu  
+/*.vtp
+/*.vts
+/*.vti
+/*.vtm
+/*.csv
+/*.orb
+
+# Ignore generated VTS files from utilities
+/utilities/*.vtk
+/utilities/*.vts
+/utilities/*.vtm
+/utilities/data/
 
 # Python cache and bytecode
 __pycache__/
@@ -37,19 +46,31 @@ ENV/
 ehthumbs.db
 Thumbs.db
 
-# Analysis and output files
+# Analysis and output files  
 orbital_analysis.png
-*.png
-*.jpg
-*.jpeg
-*.gif
 *.log
+
+# Generated image files (keep textures in flux_visualizer/textures/)
+/*.png
+/*.jpg  
+/*.jpeg
+/*.gif
 
 # Temporary files
 *.tmp
 *.temp
 *.bak
 *.backup
+
+# Keep .gitkeep files 
+!/data/*/.gitkeep
+!/flux_visualizer/textures/.gitkeep
+
+# Common output file patterns (avoid overly broad ignoring since we have sample data)
+*_output.vtk
+*_generated.vts
+*_test.vtm
+user_*.orb
 
 # Distribution / packaging
 .Python

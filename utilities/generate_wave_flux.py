@@ -209,7 +209,7 @@ def main():
     print("Generating Gaussian wave flux field for testing...")
     
     # Create output directory if it doesn't exist
-    output_dir = "data/flux"
+    output_dir = "../data/flux/time_dependent"
     os.makedirs(output_dir, exist_ok=True)
     
     # Generate the flux field

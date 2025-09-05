@@ -24,7 +24,7 @@ class FluxFieldRenderer:
         self.time_info = {}     # Dict of file_path -> time information
         self.current_time_index = {}  # Dict of file_path -> current time index
         self.global_scalar_ranges = {}  # Dict of file_path -> global (min, max) across all time steps
-        self.flux_settings = {}  # Dict of file_path -> (min_flux, max_flux) user settings
+        self.flux_settings = {}  # Dict of file_path -> (min_flux, max_flux, opacity) user settings
         self.visualization_mode = "Point Cloud"
         
         # Point cloud settings
@@ -116,7 +116,7 @@ class FluxFieldRenderer:
             
             # Store particle type and flux settings
             self.field_particle_types[file_path] = particle_type
-            self.flux_settings[file_path] = (min_flux, max_flux)
+            self.flux_settings[file_path] = (min_flux, max_flux, opacity)
             
             # Update scalar bar with the LUT from this field
             if color_lut:
@@ -225,7 +225,13 @@ class FluxFieldRenderer:
         
         # Create new visualization with updated data
         color_lut = self.current_lut  # Use current color lookup table
+        
+        # Get stored opacity or default
         opacity = 0.8  # Default opacity
+        if file_path in self.flux_settings:
+            min_flux, max_flux, stored_opacity = self.flux_settings[file_path]
+            opacity = stored_opacity
+            print(f"Using stored opacity for {file_path}: {opacity}")
         
         if self.visualization_mode == "Point Cloud":
             actor = self._create_point_cloud(processed_data, color_lut, opacity, file_path)
@@ -469,7 +475,7 @@ class FluxFieldRenderer:
                 
             # Get user flux settings
             if file_path in self.flux_settings:
-                min_flux_user, max_flux_user = self.flux_settings[file_path]
+                min_flux_user, max_flux_user, opacity_user = self.flux_settings[file_path]
                 if max_flux_user is not None:
                     # Take whichever is lower: file's max or user's max
                     effective_max = min(effective_max, max_flux_user)
@@ -492,6 +498,7 @@ class FluxFieldRenderer:
         actor = vtk.vtkActor()
         actor.SetMapper(mapper)
         actor.GetProperty().SetOpacity(opacity)
+        print(f"Applied opacity {opacity} to point cloud actor for {file_path if file_path else 'unknown file'}")
         
         actual_points = sampled_points.GetNumberOfPoints()
         
