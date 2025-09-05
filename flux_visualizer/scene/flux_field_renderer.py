@@ -23,6 +23,8 @@ class FluxFieldRenderer:
         self.time_dependent_data = {}  # Dict of file_path -> multiblock data
         self.time_info = {}     # Dict of file_path -> time information
         self.current_time_index = {}  # Dict of file_path -> current time index
+        self.global_scalar_ranges = {}  # Dict of file_path -> global (min, max) across all time steps
+        self.flux_settings = {}  # Dict of file_path -> (min_flux, max_flux) user settings
         self.visualization_mode = "Point Cloud"
         
         # Point cloud settings
@@ -73,6 +75,9 @@ class FluxFieldRenderer:
             print(f"Time steps: {self.time_info[file_path]['num_time_steps']}")
             print(f"Time range: {self.time_info[file_path]['time_range']} hours")
             
+            # Calculate global scalar range across all time steps
+            self.global_scalar_ranges[file_path] = self._calculate_global_scalar_range(vtk_data)
+            
             # Extract data for the first time step
             current_data = VTKDataLoader.get_time_step_data(vtk_data, 0)
             if current_data is None:
@@ -88,7 +93,7 @@ class FluxFieldRenderer:
         
         # Create visualization based on current mode
         if self.visualization_mode == "Point Cloud":
-            actor = self._create_point_cloud(processed_data, color_lut, opacity)
+            actor = self._create_point_cloud(processed_data, color_lut, opacity, file_path)
         elif self.visualization_mode == "Isosurfaces":
             actor = self._create_isosurfaces(processed_data, color_lut, opacity)
         elif self.visualization_mode == "Slice Planes":
@@ -109,12 +114,13 @@ class FluxFieldRenderer:
                 self.field_actors[file_path] = actor
                 self.renderer.AddActor(actor)
             
-            # Store particle type
+            # Store particle type and flux settings
             self.field_particle_types[file_path] = particle_type
+            self.flux_settings[file_path] = (min_flux, max_flux)
             
             # Update scalar bar with the LUT from this field
             if color_lut:
-                self._update_scalar_bar(color_lut, processed_data, particle_type)
+                self._update_scalar_bar(color_lut, processed_data, particle_type, file_path)
     
     def remove_flux_field(self, file_path):
         """Remove a flux field from the renderer
@@ -145,6 +151,10 @@ class FluxFieldRenderer:
             del self.time_info[file_path]
         if file_path in self.current_time_index:
             del self.current_time_index[file_path]
+        if file_path in self.global_scalar_ranges:
+            del self.global_scalar_ranges[file_path]
+        if file_path in self.flux_settings:
+            del self.flux_settings[file_path]
     
     def is_time_dependent(self, file_path):
         """Check if a loaded flux field is time-dependent
@@ -218,7 +228,7 @@ class FluxFieldRenderer:
         opacity = 0.8  # Default opacity
         
         if self.visualization_mode == "Point Cloud":
-            actor = self._create_point_cloud(processed_data, color_lut, opacity)
+            actor = self._create_point_cloud(processed_data, color_lut, opacity, file_path)
         elif self.visualization_mode == "Isosurfaces":
             actor = self._create_isosurfaces(processed_data, color_lut, opacity)
         elif self.visualization_mode == "Slice Planes":
@@ -239,7 +249,7 @@ class FluxFieldRenderer:
             # Update scalar bar
             if color_lut:
                 particle_type = self.field_particle_types.get(file_path)
-                self._update_scalar_bar(color_lut, processed_data, particle_type)
+                self._update_scalar_bar(color_lut, processed_data, particle_type, file_path)
             
             # Print time information
             current_time = time_info['time_values'][time_index]
@@ -302,13 +312,55 @@ class FluxFieldRenderer:
         if self.current_time_index.get(file_path, 0) != closest_index:
             self.set_time_step(file_path, closest_index)
     
-    def _create_point_cloud(self, vtk_data, color_lut, opacity):
+    def _calculate_global_scalar_range(self, multiblock_data):
+        """Calculate the global scalar range across all time steps
+        
+        Args:
+            multiblock_data: VTK multiblock dataset with time-dependent data
+            
+        Returns:
+            tuple: (global_min, global_max) across all time steps
+        """
+        from data_io import VTKDataLoader
+        
+        global_min = float('inf')
+        global_max = float('-inf')
+        
+        # Get number of time steps
+        time_info = VTKDataLoader.get_time_info(multiblock_data)
+        num_time_steps = time_info['num_time_steps']
+        
+        print(f"Calculating global scalar range across {num_time_steps} time steps...")
+        
+        for time_index in range(num_time_steps):
+            time_step_data = VTKDataLoader.get_time_step_data(multiblock_data, time_index)
+            if time_step_data and time_step_data.GetPointData().GetScalars():
+                scalar_range = time_step_data.GetScalarRange()
+                global_min = min(global_min, scalar_range[0])
+                global_max = max(global_max, scalar_range[1])
+        
+        print(f"Global scalar range: [{global_min:.2e}, {global_max:.2e}]")
+        return (global_min, global_max)
+    
+    def get_global_scalar_range(self, file_path):
+        """Get the global scalar range for a time-dependent file
+        
+        Args:
+            file_path: Path to the flux file (identifier)
+            
+        Returns:
+            tuple: (global_min, global_max) or None if not available
+        """
+        return self.global_scalar_ranges.get(file_path)
+    
+    def _create_point_cloud(self, vtk_data, color_lut, opacity, file_path=None):
         """Create point cloud visualization of flux field
         
         Args:
             vtk_data: VTK dataset containing the flux field
             color_lut: Color lookup table
             opacity: Opacity value
+            file_path: Path to flux file (for accessing settings)
             
         Returns:
             VTK actor for the point cloud
@@ -406,7 +458,24 @@ class FluxFieldRenderer:
         # Create mapper
         mapper = vtk.vtkPolyDataMapper()
         mapper.SetInputConnection(glyph3D.GetOutputPort())
-        mapper.SetScalarRange(original_range)
+        # Calculate proper flux range using min(user_max_flux, file_max_flux)
+        effective_max = original_range[1]  # Default to file's max
+        
+        if file_path:
+            # Get global range for time-dependent files
+            global_range = self.get_global_scalar_range(file_path)
+            if global_range is not None:
+                effective_max = global_range[1]  # Use global max for time-dependent files
+                
+            # Get user flux settings
+            if file_path in self.flux_settings:
+                min_flux_user, max_flux_user = self.flux_settings[file_path]
+                if max_flux_user is not None:
+                    # Take whichever is lower: file's max or user's max
+                    effective_max = min(effective_max, max_flux_user)
+                    
+        print(f"Setting mapper scalar range: [{original_range[0]:.2e}, {effective_max:.2e}] (file_max={original_range[1]:.2e})")
+        mapper.SetScalarRange(original_range[0], effective_max)
         
         # Set color lookup table
         if color_lut:
@@ -505,7 +574,7 @@ class FluxFieldRenderer:
                     lut = mapper.GetLookupTable() if mapper else None
                     opacity = actor.GetProperty().GetOpacity()
                     
-                    new_actor = self._create_point_cloud(vtk_data, lut, opacity)
+                    new_actor = self._create_point_cloud(vtk_data, lut, opacity, file_path)
                     if new_actor:
                         self.renderer.RemoveActor(actor)
                         self.renderer.AddActor(new_actor)
@@ -615,13 +684,14 @@ class FluxFieldRenderer:
         
         return new_data
     
-    def _update_scalar_bar(self, lut, vtk_data, particle_type=None):
+    def _update_scalar_bar(self, lut, vtk_data, particle_type=None, file_path=None):
         """Update or create the scalar bar
         
         Args:
             lut: VTK lookup table
             vtk_data: VTK dataset for getting scalar range and name
             particle_type: Type of particle for title
+            file_path: File path to check for global range (optional)
         """
         # Don't always remove existing scalar bar - we might want to update it
         
@@ -631,7 +701,13 @@ class FluxFieldRenderer:
             return
         
         scalar_name = scalar_array.GetName() if scalar_array.GetName() else "Flux"
-        scalar_range = scalar_array.GetRange()
+        
+        # Use global range if available for time-dependent files, otherwise use current data range
+        if file_path and file_path in self.global_scalar_ranges:
+            scalar_range = self.global_scalar_ranges[file_path]
+            print(f"Using global scalar range for scalar bar: [{scalar_range[0]:.2e}, {scalar_range[1]:.2e}]")
+        else:
+            scalar_range = scalar_array.GetRange()
         
         # With flux thresholding, we should no longer have zero values,
         # but keep this as a safety check

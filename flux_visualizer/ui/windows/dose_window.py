@@ -36,6 +36,8 @@ class DoseWindow(QDialog):
         self.config = config
         self.current_time_index = 0
         self.dose_data = None
+        self.flux_types = []
+        self.flux_contributions = []
         
         # Time indicator elements (will be created when data is set)
         self.time_line1 = None
@@ -58,9 +60,11 @@ class DoseWindow(QDialog):
         self.ax1 = None
         self.ax2 = None
     
-    def set_dose_data(self, dose_data):
+    def set_dose_data(self, dose_data, flux_types=None, flux_contributions=None):
         """Set dose data and create the plot"""
         self.dose_data = dose_data
+        self.flux_types = flux_types or []
+        self.flux_contributions = flux_contributions or []
         self._create_plot()
     
     def _create_plot(self):
@@ -75,7 +79,17 @@ class DoseWindow(QDialog):
         
         # Create matplotlib figure
         self.fig, (self.ax1, self.ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
-        self.fig.suptitle('Radiation Dose Along Orbital Path', fontsize=14, fontweight='bold')
+        
+        # Create title based on flux types
+        if len(self.flux_types) > 1:
+            flux_type_text = f" ({', '.join(self.flux_types)})"
+            title = f'Combined Radiation Dose Along Orbital Path{flux_type_text}'
+        elif len(self.flux_types) == 1:
+            title = f'{self.flux_types[0]} Radiation Dose Along Orbital Path'
+        else:
+            title = 'Radiation Dose Along Orbital Path'
+        
+        self.fig.suptitle(title, fontsize=14, fontweight='bold')
         
         times = self.dose_data['times']
         dose_rates = self.dose_data['dose_rates_mGy_per_s']
@@ -109,7 +123,15 @@ class DoseWindow(QDialog):
         self.layout.addWidget(self.canvas)
         
         # Info label - at bottom with better styling
-        info_text = (f"Cross Section: {self.dose_data['cross_section_m2']:.3f} m²  |  "
+        if len(self.flux_types) > 1:
+            flux_info = f"Combined flux from {len(self.flux_types)} sources: {', '.join(self.flux_types)}"
+        elif len(self.flux_types) == 1:
+            flux_info = f"Flux source: {self.flux_types[0]}"
+        else:
+            flux_info = "Single flux source"
+        
+        info_text = (f"{flux_info}  |  "
+                    f"Cross Section: {self.dose_data['cross_section_m2']:.3f} m²  |  "
                     f"Particle Energy: {self.dose_data['particle_energy_MeV']:.1f} MeV  |  "
                     f"Time Range: {self.dose_data['time_range_hours'][0]:.1f}h to {self.dose_data['time_range_hours'][1]:.1f}h")
         self.info_label = QLabel(info_text)
@@ -176,9 +198,11 @@ class DoseWindow(QDialog):
             if self.canvas:
                 self.canvas.draw()
         
-    def update_dose_data(self, dose_data):
+    def update_dose_data(self, dose_data, flux_types=None, flux_contributions=None):
         """Update with new dose data"""
         self.dose_data = dose_data
+        self.flux_types = flux_types or []
+        self.flux_contributions = flux_contributions or []
         self._create_plot()
     
     def closeEvent(self, event):

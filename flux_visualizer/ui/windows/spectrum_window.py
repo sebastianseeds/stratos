@@ -112,6 +112,8 @@ class EnergySpectrumWindow(BaseSpectrumWindow):
         # Energy spectrum parameters - initialize BEFORE calling super()
         self.energy_range = (10, 10000)  # keV
         self.energy_bins = 50
+        self.flux_data_list = []
+        self.flux_types = []
         
         window_id = f"energy_spectrum_{satellite_file_path}"
         super().__init__(window_id, "Energy Spectrum", satellite_file_path, satellite_name, config)
@@ -125,6 +127,15 @@ class EnergySpectrumWindow(BaseSpectrumWindow):
         self.energy_range = energy_range
         self.energy_bins = energy_bins
         self._initialize_axis_limits()  # Reinitialize limits when parameters change
+        self._update_plot()
+    
+    def set_multiple_flux_data(self, flux_data_list, flux_types):
+        """Set multiple flux data sources"""
+        self.flux_data_list = flux_data_list
+        self.flux_types = flux_types
+        # Use the first flux data for backward compatibility
+        if flux_data_list:
+            self.flux_data = flux_data_list[0]
         self._update_plot()
     
     def _initialize_axis_limits(self):
@@ -171,34 +182,79 @@ class EnergySpectrumWindow(BaseSpectrumWindow):
             spectrum = normalization * np.power(energies / char_energy, spectral_index) * \
                       np.exp(-energies / (char_energy * 10))
             
-            # Add some flux data influence if available
-            if hasattr(self.flux_data, 'GetPointData') and self.flux_data.GetPointData().GetScalars():
-                # Sample flux at current position
-                from vtk import vtkProbeFilter
-                import vtk
-                
-                probe = vtkProbeFilter()
-                points = vtk.vtkPoints()
-                points.InsertNextPoint(current_point.x, current_point.y, current_point.z)
-                polydata = vtk.vtkPolyData()
-                polydata.SetPoints(points)
-                
-                probe.SetInputData(polydata)
-                probe.SetSourceData(self.flux_data)
-                probe.Update()
-                
-                result = probe.GetOutput()
-                if result.GetNumberOfPoints() > 0:
-                    scalar_array = result.GetPointData().GetScalars()
-                    if scalar_array and scalar_array.GetNumberOfTuples() > 0:
-                        flux_value = scalar_array.GetValue(0)
-                        spectrum *= max(0.01, flux_value / 1e6)  # Scale spectrum by local flux
+            # Plot spectra for multiple flux sources or single source
+            colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown']
             
-            # Plot spectrum
-            ax.loglog(energies, spectrum, 'b-', linewidth=2, label=f'Alt: {altitude:.0f} km')
+            if hasattr(self, 'flux_data_list') and self.flux_data_list:
+                # Plot multiple flux sources with different colors and labels
+                for i, (flux_data, flux_type) in enumerate(zip(self.flux_data_list, self.flux_types)):
+                    current_spectrum = spectrum.copy()  # Start with base spectrum
+                    
+                    # Modify spectrum based on this flux data
+                    if hasattr(flux_data, 'GetPointData') and flux_data.GetPointData().GetScalars():
+                        # Sample flux at current position
+                        from vtk import vtkProbeFilter
+                        import vtk
+                        
+                        probe = vtkProbeFilter()
+                        points = vtk.vtkPoints()
+                        points.InsertNextPoint(current_point.x, current_point.y, current_point.z)
+                        polydata = vtk.vtkPolyData()
+                        polydata.SetPoints(points)
+                        
+                        probe.SetInputData(polydata)
+                        probe.SetSourceData(flux_data)
+                        probe.Update()
+                        
+                        result = probe.GetOutput()
+                        if result.GetNumberOfPoints() > 0:
+                            scalar_array = result.GetPointData().GetScalars()
+                            if scalar_array and scalar_array.GetNumberOfTuples() > 0:
+                                flux_value = scalar_array.GetValue(0)
+                                current_spectrum *= max(0.01, flux_value / 1e6)  # Scale spectrum by local flux
+                    
+                    # Plot spectrum with unique color and label
+                    color = colors[i % len(colors)]
+                    ax.loglog(energies, current_spectrum, color=color, linewidth=2, 
+                             label=f'{flux_type} (Alt: {altitude:.0f} km)')
+            else:
+                # Single flux source - backward compatibility
+                if hasattr(self.flux_data, 'GetPointData') and self.flux_data.GetPointData().GetScalars():
+                    # Sample flux at current position
+                    from vtk import vtkProbeFilter
+                    import vtk
+                    
+                    probe = vtkProbeFilter()
+                    points = vtk.vtkPoints()
+                    points.InsertNextPoint(current_point.x, current_point.y, current_point.z)
+                    polydata = vtk.vtkPolyData()
+                    polydata.SetPoints(points)
+                    
+                    probe.SetInputData(polydata)
+                    probe.SetSourceData(self.flux_data)
+                    probe.Update()
+                    
+                    result = probe.GetOutput()
+                    if result.GetNumberOfPoints() > 0:
+                        scalar_array = result.GetPointData().GetScalars()
+                        if scalar_array and scalar_array.GetNumberOfTuples() > 0:
+                            flux_value = scalar_array.GetValue(0)
+                            spectrum *= max(0.01, flux_value / 1e6)  # Scale spectrum by local flux
+                
+                # Plot single spectrum
+                ax.loglog(energies, spectrum, 'b-', linewidth=2, label=f'Alt: {altitude:.0f} km')
             ax.set_xlabel('Energy (keV)')
             ax.set_ylabel('Differential Flux (particles/cm²/s/keV)')
-            ax.set_title(f'Energy Spectrum - Time: {current_point.time:.2f} h, Alt: {altitude:.0f} km')
+            
+            # Create title based on flux types
+            if hasattr(self, 'flux_types') and len(self.flux_types) > 1:
+                flux_info = f" ({', '.join(self.flux_types)})"
+            elif hasattr(self, 'flux_types') and len(self.flux_types) == 1:
+                flux_info = f" ({self.flux_types[0]})"
+            else:
+                flux_info = ""
+            
+            ax.set_title(f'Energy Spectrum{flux_info} - Time: {current_point.time:.2f} h, Alt: {altitude:.0f} km')
             
             # Apply fixed axis limits
             if self.x_limits and self.y_limits:

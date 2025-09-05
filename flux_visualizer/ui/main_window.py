@@ -1004,12 +1004,22 @@ class ElectronFluxVisualizerApp(QMainWindow):
                         self.flux_field_renderer.set_three_plane_positions(positions)
                 
                 # Create color lookup table with flux range
-                scalar_range = vtk_data.GetScalarRange()
+                # Check if this is a time-dependent flux file and use global range
+                global_range = self.flux_field_renderer.get_global_scalar_range(file_path)
+                if global_range is not None:
+                    # Use global range for time-dependent files
+                    scalar_range = global_range
+                    print(f"Using global scalar range for {Path(file_path).name}: [{scalar_range[0]:.2e}, {scalar_range[1]:.2e}]")
+                else:
+                    # Use current data range for static files
+                    scalar_range = vtk_data.GetScalarRange()
                 
-                # Apply flux range limits
+                # Apply flux range limits - pin to file data range
                 if max_flux is not None:
-                    scalar_range = (scalar_range[0], max_flux)
+                    # Take whichever is lower: file's max or control's max
+                    scalar_range = (scalar_range[0], min(scalar_range[1], max_flux))
                 if min_flux is not None:
+                    # Take whichever is higher: file's min or control's min
                     scalar_range = (max(min_flux, scalar_range[0]), scalar_range[1])
                 
                 lut = self.color_manager.create_lookup_table_with_scale(
@@ -1333,9 +1343,22 @@ class ElectronFluxVisualizerApp(QMainWindow):
                 orbital_data = self.orbital_data_dict[satellite_file_path]
                 window.set_orbital_data(orbital_data)
             
-            # Set flux data if available
-            if self.vtk_data_dict:
-                # Use first available flux field (could be enhanced to let user choose)
+            # Set flux data from all selected/checked flux files
+            selected_flux_data = []
+            selected_flux_types = []
+            
+            for file_path, file_widget in self.loaded_files.items():
+                if file_widget.is_checked() and file_path in self.vtk_data_dict:
+                    flux_data = self.vtk_data_dict[file_path]
+                    particle_type = file_widget.get_particle_type()
+                    selected_flux_data.append(flux_data)
+                    selected_flux_types.append(particle_type)
+            
+            if selected_flux_data:
+                # Pass all selected flux data and their types to the spectrum window
+                window.set_multiple_flux_data(selected_flux_data, selected_flux_types)
+            elif self.vtk_data_dict:
+                # Fallback: use first available if nothing selected
                 first_flux_data = list(self.vtk_data_dict.values())[0]
                 window.set_flux_data(first_flux_data)
             
@@ -1411,38 +1434,68 @@ class ElectronFluxVisualizerApp(QMainWindow):
                 QMessageBox.warning(self, "Warning", "Please load flux field data first")
                 return
             
-            flux_field = list(self.vtk_data_dict.values())[0]
-            self.flux_analyzer.set_vtk_data(flux_field)
-            self.flux_analyzer.set_orbital_data(orbital_data)
-            self.flux_analyzer.set_cross_section(cross_section)
+            # Collect all selected/checked flux files for dose calculation
+            selected_flux_data = []
+            selected_flux_types = []
             
-            dose_data = self.flux_analyzer.calculate_dose_time_series(
-                cross_section_m2=cross_section,
-                particle_energy_MeV=1.0
-            )
+            for file_path, file_widget in self.loaded_files.items():
+                if file_widget.is_checked() and file_path in self.vtk_data_dict:
+                    flux_data = self.vtk_data_dict[file_path]
+                    particle_type = file_widget.get_particle_type()
+                    selected_flux_data.append(flux_data)
+                    selected_flux_types.append(particle_type)
             
-            if dose_data:
-                self._create_dose_plot(dose_data, selected_satellite)
+            if not selected_flux_data:
+                QMessageBox.warning(self, "Warning", "Please select at least one flux file")
+                return
+            
+            # Calculate dose for each selected flux and sum them
+            total_dose_data = None
+            flux_contributions = []
+            
+            for flux_data, particle_type in zip(selected_flux_data, selected_flux_types):
+                self.flux_analyzer.set_vtk_data(flux_data)
+                self.flux_analyzer.set_orbital_data(orbital_data)
+                self.flux_analyzer.set_cross_section(cross_section)
+                
+                dose_data = self.flux_analyzer.calculate_dose_time_series(
+                    cross_section_m2=cross_section,
+                    particle_energy_MeV=1.0
+                )
+                
+                if dose_data:
+                    flux_contributions.append((dose_data, particle_type))
+                    
+                    if total_dose_data is None:
+                        total_dose_data = dose_data.copy()
+                    else:
+                        # Sum the dose values
+                        for key in ['dose_rate', 'cumulative_dose']:
+                            if key in total_dose_data and key in dose_data:
+                                total_dose_data[key] = [a + b for a, b in zip(total_dose_data[key], dose_data[key])]
+            
+            if total_dose_data:
+                self._create_dose_plot(total_dose_data, selected_satellite, selected_flux_types, flux_contributions)
             
         except ImportError:
             QMessageBox.critical(self, "Error", "matplotlib is required for dose plotting")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Error calculating dose: {str(e)}")
     
-    def _create_dose_plot(self, dose_data, satellite_file_path):
+    def _create_dose_plot(self, dose_data, satellite_file_path, flux_types=None, flux_contributions=None):
         """Create dynamic dose time series plot"""
         from .windows.dose_window import DoseWindow
         
         window_id = f"dose_{satellite_file_path}"
         if window_id in self.spectrum_windows:
-            self.spectrum_windows[window_id].update_dose_data(dose_data)
+            self.spectrum_windows[window_id].update_dose_data(dose_data, flux_types, flux_contributions)
             self.spectrum_windows[window_id].show()
             self.spectrum_windows[window_id].raise_()
         else:
             satellite_name = Path(satellite_file_path).name
             window = DoseWindow(satellite_file_path, satellite_name, self.config, self)
             window.window_closed.connect(self._on_spectrum_window_closed)
-            window.set_dose_data(dose_data)
+            window.set_dose_data(dose_data, flux_types, flux_contributions)
             window.set_current_time_index(self.current_time_index)
             self.spectrum_windows[window_id] = window
             window.show()
