@@ -560,8 +560,6 @@ class ElectronFluxVisualizerApp(QMainWindow):
         # Point cloud specific signals
         self.viz_panel.settings_changed.connect(self._on_viz_settings_changed)
         
-        # File selection signal
-        self.viz_panel.selected_file_changed.connect(self._on_selected_file_changed)
     
     def _on_viz_mode_changed(self, mode):
         """Handle visualization mode change"""
@@ -598,11 +596,6 @@ class ElectronFluxVisualizerApp(QMainWindow):
         
         self.vtk_widget.GetRenderWindow().Render()
     
-    def _on_selected_file_changed(self, file_path):
-        """Handle when user selects a different file in visualization panel"""
-        # For now, just update visualization for all files
-        # In the future, this could load per-file settings
-        self._update_visualization()
     
     def _connect_signals(self):
         """Connect UI signals to methods"""
@@ -1023,10 +1016,13 @@ class ElectronFluxVisualizerApp(QMainWindow):
                     colormap_name, scale_mode, scalar_range
                 )
                 
-                # Add flux field to renderer with flux thresholds
+                # Add flux field to renderer with flux thresholds and particle type
                 self.flux_field_renderer.add_flux_field(
-                    file_path, vtk_data, lut, opacity, min_flux, max_flux
+                    file_path, vtk_data, lut, opacity, min_flux, max_flux, particle_type
                 )
+        
+        # After adding all flux fields, update the scalar bar title
+        self.flux_field_renderer.update_scalar_bar_title()
         
         self.vtk_widget.GetRenderWindow().Render()
     

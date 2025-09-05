@@ -623,8 +623,7 @@ class FluxFieldRenderer:
             vtk_data: VTK dataset for getting scalar range and name
             particle_type: Type of particle for title
         """
-        # Remove existing scalar bar if present
-        self._remove_scalar_bar()
+        # Don't always remove existing scalar bar - we might want to update it
         
         # Get scalar array info
         scalar_array = vtk_data.GetPointData().GetScalars()
@@ -646,12 +645,33 @@ class FluxFieldRenderer:
             else:
                 return
         
-        # Create scalar bar
-        self.scalar_bar = vtk.vtkScalarBarActor()
-        self.scalar_bar.SetLookupTable(lut)
+        # If scalar bar doesn't exist, create it
+        if not self.scalar_bar:
+            # Create scalar bar
+            self.scalar_bar = vtk.vtkScalarBarActor()
+            self.scalar_bar.SetLookupTable(lut)
+            # Add to renderer only once
+            self.renderer.AddActor2D(self.scalar_bar)
+        else:
+            # Update the lookup table
+            self.scalar_bar.SetLookupTable(lut)
         
-        # Set title and format - use particle type if available
-        if particle_type:
+        # Build title based on all active particle types
+        active_types = []
+        for file_path, p_type in self.field_particle_types.items():
+            if file_path in self.field_actors and p_type:
+                if p_type not in active_types:
+                    active_types.append(p_type)
+        
+        # Set title based on active particle types
+        if len(active_types) > 1:
+            # Multiple types - show combined title
+            title = f"Mixed flux ({', '.join(active_types)})"
+        elif len(active_types) == 1:
+            # Single type
+            title = f"{active_types[0]} flux"
+        elif particle_type:
+            # Use provided particle type
             title = f"{particle_type} flux"
         else:
             title = scalar_name if scalar_name != "electron_flux" else "electron flux"
@@ -684,6 +704,30 @@ class FluxFieldRenderer:
             self.renderer.RemoveActor2D(self.scalar_bar)
             self.scalar_bar = None
             self.current_lut = None
+    
+    def update_scalar_bar_title(self):
+        """Update the scalar bar title based on current active particle types"""
+        if not self.scalar_bar:
+            return
+        
+        # Build title based on all active particle types
+        active_types = []
+        for file_path, p_type in self.field_particle_types.items():
+            if file_path in self.field_actors and p_type:
+                if p_type not in active_types:
+                    active_types.append(p_type)
+        
+        # Set title based on active particle types
+        if len(active_types) > 1:
+            # Multiple types - show combined title
+            title = f"Mixed flux ({', '.join(active_types)})"
+        elif len(active_types) == 1:
+            # Single type
+            title = f"{active_types[0]} flux"
+        else:
+            title = "Flux"
+        
+        self.scalar_bar.SetTitle(title)
     
     def _create_isosurfaces(self, vtk_data, color_lut, opacity):
         """Create isosurface visualization of flux field

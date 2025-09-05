@@ -20,7 +20,6 @@ class VisualizationPanel(QGroupBox):
     scale_changed = pyqtSignal(str)
     opacity_changed = pyqtSignal(int)
     settings_changed = pyqtSignal()
-    selected_file_changed = pyqtSignal(str)
     
     def __init__(self, config, parent=None):
         """Initialize the visualization panel"""
@@ -39,18 +38,12 @@ class VisualizationPanel(QGroupBox):
         self.main_layout.setSpacing(4)  # Tighter vertical spacing
         self.main_layout.setContentsMargins(8, 8, 8, 8)  # Tighter margins
         
-        # File selector (initially hidden)
+        # Flux files status (simple label, no dropdown)
         file_layout = QHBoxLayout()
-        file_layout.addWidget(QLabel("File:"))
-        self.file_combo = QComboBox()
-        self.file_combo.setVisible(False)  # Hidden when no files or single file
-        self.file_combo.currentTextChanged.connect(self._on_file_changed)
-        file_layout.addWidget(self.file_combo)
-        
-        # Current file label (shown when single file)
-        self.current_file_label = QLabel("No flux files loaded")
-        self.current_file_label.setStyleSheet("font-weight: bold; color: #666;")
-        file_layout.addWidget(self.current_file_label)
+        file_layout.addWidget(QLabel("Files:"))
+        self.files_status_label = QLabel("No flux files loaded")
+        self.files_status_label.setStyleSheet("font-weight: bold; color: #666;")
+        file_layout.addWidget(self.files_status_label)
         
         self.main_layout.addLayout(file_layout)
         
@@ -81,10 +74,6 @@ class VisualizationPanel(QGroupBox):
         self._update_dynamic_controls()
         self.mode_changed.emit(mode)
     
-    def _on_file_changed(self, file_path):
-        """Handle file selection change"""
-        if file_path:
-            self.selected_file_changed.emit(file_path)
     
     def _on_colormap_combo_changed(self, text):
         """Handle colormap combo change"""
@@ -675,44 +664,21 @@ class VisualizationPanel(QGroupBox):
         num_files = len(self.loaded_files)
         
         if num_files == 0:
-            # No files loaded
-            self.file_combo.setVisible(False)
-            self.current_file_label.setVisible(True)
-            self.current_file_label.setText("No flux files loaded")
-            
+            self.files_status_label.setText("No flux files loaded")
         elif num_files == 1:
-            # Single file - show as label
-            self.file_combo.setVisible(False) 
-            self.current_file_label.setVisible(True)
             file_path = list(self.loaded_files.keys())[0]
             display_name = self.loaded_files[file_path]
-            self.current_file_label.setText(f"File: {display_name}")
-            
+            self.files_status_label.setText(f"1 file: {display_name}")
         else:
-            # Multiple files - show dropdown
-            self.current_file_label.setVisible(False)
-            self.file_combo.setVisible(True)
-            
-            # Update combo box items
-            self.file_combo.clear()
-            for file_path, display_name in self.loaded_files.items():
-                self.file_combo.addItem(display_name, file_path)
+            self.files_status_label.setText(f"{num_files} files loaded")
     
-    def get_selected_file(self):
-        """Get the currently selected file path
+    def get_loaded_files(self):
+        """Get all loaded file paths
         
         Returns:
-            str: Path to selected file, or None if no files
+            list: List of all loaded file paths
         """
-        if len(self.loaded_files) == 0:
-            return None
-        elif len(self.loaded_files) == 1:
-            return list(self.loaded_files.keys())[0]
-        else:
-            current_index = self.file_combo.currentIndex()
-            if current_index >= 0:
-                return self.file_combo.itemData(current_index)
-            return None
+        return list(self.loaded_files.keys())
     
     def get_min_flux(self):
         """Get the minimum flux threshold
