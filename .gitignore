@@ -1,21 +1,19 @@
 # STRATOS - Space Trajectory Radiation Analysis Toolkit .gitignore
 
-# User-generated data files (keep sample/example data)
-# Allow sample data in data/ directories but ignore user files elsewhere
-/*.vtk
-/*.vtu  
-/*.vtp
-/*.vts
-/*.vti
-/*.vtm
-/*.csv
-/*.orb
+# Data files - this is a visualization platform, not a data repository
+# Ignore all flux and orbital data files
+/data/flux/
+/data/orbits/
 
-# Ignore generated VTS files from utilities
-/utilities/*.vtk
-/utilities/*.vts
-/utilities/*.vtm
-/utilities/data/
+# User-generated data files anywhere in project
+*.vtk
+*.vtu  
+*.vtp
+*.vts
+*.vti
+*.vtm
+*.csv
+*.orb
 
 # Python cache and bytecode
 __pycache__/
@@ -62,15 +60,9 @@ orbital_analysis.png
 *.bak
 *.backup
 
-# Keep .gitkeep files 
+# Keep .gitkeep files to preserve directory structure
 !/data/*/.gitkeep
 !/flux_visualizer/textures/.gitkeep
-
-# Common output file patterns (avoid overly broad ignoring since we have sample data)
-*_output.vtk
-*_generated.vts
-*_test.vtm
-user_*.orb
 
 # Distribution / packaging
 .Python
