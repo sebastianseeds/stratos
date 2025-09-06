@@ -95,9 +95,16 @@ class DoseWindow(QDialog):
         dose_rates = self.dose_data['dose_rates_mGy_per_s']
         cumulative_dose = self.dose_data['cumulative_dose_mGy']
         
-        # Calculate error bands (uncertainty estimates)
-        dose_rate_errors = self._calculate_dose_rate_errors(dose_rates)
-        cumulative_dose_errors = self._calculate_cumulative_dose_errors(cumulative_dose, dose_rate_errors, times)
+        # Use actual flux uncertainties if available, otherwise synthetic estimates
+        if self.dose_data.get('has_uncertainty', False):
+            dose_rate_errors = self.dose_data['dose_rate_uncertainties_mGy_per_s']
+            cumulative_dose_errors = self.dose_data['cumulative_dose_uncertainties_mGy']
+            print(f"Using actual flux uncertainties from data (mean relative: {self.dose_data.get('mean_relative_uncertainty', 0)*100:.1f}%)")
+        else:
+            # Fall back to synthetic uncertainty estimates
+            dose_rate_errors = self._calculate_dose_rate_errors(dose_rates)
+            cumulative_dose_errors = self._calculate_cumulative_dose_errors(cumulative_dose, dose_rate_errors, times)
+            print("Using synthetic uncertainty estimates (no flux uncertainty data)")
         
         # Plot dose rate with error band (fill_between)
         self.ax1.plot(times, dose_rates, 'b-', linewidth=2, label='Dose Rate')
