@@ -5,6 +5,7 @@ Flux field renderer for various visualization modes
 import vtk
 import numpy as np
 from vtk.util.numpy_support import vtk_to_numpy
+from visualization.vector_glyphs import VectorGlyphRenderer
 
 
 class FluxFieldRenderer:
@@ -27,8 +28,12 @@ class FluxFieldRenderer:
         self.flux_settings = {}  # Dict of file_path -> (min_flux, max_flux, opacity) user settings
         self.visualization_mode = "Point Cloud"
         
+        # Vector visualization support
+        self.vector_glyph_renderer = VectorGlyphRenderer()
+        self.vector_visualization_enabled = True  # Default enabled
+        
         # Point cloud settings
-        self.point_density = 10000
+        self.point_density = 3000  # Reduced for better performance with vectors
         self.point_size = 400  # meters radius
         
         # Isosurface settings
@@ -371,6 +376,51 @@ class FluxFieldRenderer:
         Returns:
             VTK actor for the point cloud
         """
+        # Check if vector data is available for arrow visualization
+        print("=== FLUX FIELD RENDERER POINT CLOUD DEBUG ===")
+        print(f"Point density setting: {self.point_density}")
+        print(f"Point size setting: {self.point_size}")
+        print(f"Vector visualization enabled: {self.vector_visualization_enabled}")
+        
+        has_vector_data = self.vector_glyph_renderer.has_vector_data(vtk_data)
+        
+        if has_vector_data and self.vector_visualization_enabled:
+            # Create vector arrow point cloud
+            print("Vector data detected - using arrow glyphs for point cloud")
+            vector_polydata, has_vectors = self.vector_glyph_renderer.create_vector_point_cloud(
+                vtk_data, 
+                target_points=self.point_density,
+                arrow_scale=0.001  # Scale factor for arrow size (adjust as needed)
+            )
+            
+            if has_vectors and vector_polydata:
+                # Create vector glyphs with small, uniform arrows
+                arrow_scale = 2000.0  # Fixed small scale (2000 km arrows)
+                print(f"Final arrow scale: {arrow_scale} (fixed size)")
+                
+                actor = self.vector_glyph_renderer.create_vector_glyphs(
+                    vector_polydata, 
+                    color_lut=color_lut, 
+                    arrow_scale=arrow_scale,
+                    opacity=opacity,
+                    scale_by_magnitude=False  # Fixed size arrows
+                )
+                
+                if actor:
+                    print("Successfully created vector arrow actor")
+                    return actor
+                else:
+                    print("Failed to create vector arrow actor, falling back to spheres")
+            else:
+                print("No vector data found, falling back to spheres")
+        elif has_vector_data:
+            print("Vector data detected but vector visualization is disabled")
+        else:
+            print("No vector data detected")
+        
+        # Fallback to sphere-based point cloud for scalar data
+        print("Using sphere glyphs for point cloud")
+        
         # Get scalar data
         scalar_array = vtk_data.GetPointData().GetScalars()
         if not scalar_array:
@@ -553,6 +603,18 @@ class FluxFieldRenderer:
             # Recreate all visualizations with new mode
             self.refresh_all()
     
+    def set_vector_visualization_enabled(self, enabled):
+        """Enable or disable vector arrow visualization
+        
+        Args:
+            enabled: True to show vector arrows, False to show only scalar data
+        """
+        if enabled != self.vector_visualization_enabled:
+            self.vector_visualization_enabled = enabled
+            print(f"Vector visualization {'enabled' if enabled else 'disabled'}")
+            # Recreate visualizations to apply vector toggle
+            self.refresh_all()
+    
     def set_point_density(self, density):
         """Set the point cloud density
         
@@ -592,15 +654,34 @@ class FluxFieldRenderer:
         # Store current actors and settings
         actors_to_refresh = list(self.field_actors.items())
         
-        for file_path, actor in actors_to_refresh:
+        for file_path, actor_or_list in actors_to_refresh:
             if file_path in self.field_data:
                 vtk_data = self.field_data[file_path]
-                mapper = actor.GetMapper()
-                lut = mapper.GetLookupTable() if mapper else None
-                opacity = actor.GetProperty().GetOpacity()
                 
-                # Recreate the visualization
-                self.add_flux_field(file_path, vtk_data, lut, opacity)
+                # Handle both single actors and lists of actors
+                if isinstance(actor_or_list, list) and len(actor_or_list) > 0:
+                    actor = actor_or_list[0]  # Use first actor for settings
+                else:
+                    actor = actor_or_list
+                
+                if hasattr(actor, 'GetMapper'):
+                    mapper = actor.GetMapper()
+                    lut = mapper.GetLookupTable() if mapper else None
+                    opacity = actor.GetProperty().GetOpacity()
+                else:
+                    lut = None
+                    opacity = 0.7  # Default opacity
+                
+                # Get stored flux settings if available
+                if file_path in self.flux_settings:
+                    min_flux, max_flux, stored_opacity = self.flux_settings[file_path]
+                    particle_type = self.field_particle_types.get(file_path)
+                    
+                    # Recreate the visualization with stored settings
+                    self.add_flux_field(file_path, vtk_data, lut, stored_opacity, min_flux, max_flux, particle_type)
+                else:
+                    # Recreate with current settings
+                    self.add_flux_field(file_path, vtk_data, lut, opacity)
     
     def update_opacity(self, opacity):
         """Update opacity for all flux field actors
@@ -890,7 +971,48 @@ class FluxFieldRenderer:
         prop.SetSpecular(0.2)
         prop.SetSpecularPower(20)
         
-        return actor
+        # Check if vector data is available and add vector arrows to isosurface
+        actors = [actor]  # Start with isosurface actor
+        
+        has_vector_data = self.vector_glyph_renderer.has_vector_data(vtk_data)
+        if has_vector_data and self.vector_visualization_enabled:
+            print("Adding vector arrows to isosurface")
+            
+            # Sample points on the isosurface for vector arrows
+            num_surface_points = contour_output.GetNumberOfPoints()
+            if num_surface_points > 0:
+                # Create a subsampled version of the isosurface for vectors
+                target_vector_points = min(100, num_surface_points // 10)  # Sparse vectors on surface
+                
+                if target_vector_points > 0:
+                    # Use uniform sampling for isosurface points
+                    step = max(1, num_surface_points // target_vector_points)
+                    sample_indices = range(0, num_surface_points, step)
+                    
+                    # Create new polydata with sampled surface points
+                    sampled_points = vtk.vtkPoints()
+                    for idx in sample_indices:
+                        point = contour_output.GetPoint(idx)
+                        sampled_points.InsertNextPoint(point)
+                    
+                    surface_sample = vtk.vtkPolyData()
+                    surface_sample.SetPoints(sampled_points)
+                    
+                    # Use VectorGlyphRenderer to add vectors to the surface sample points
+                    vector_actors = self.vector_glyph_renderer.add_vectors_to_slice_plane(
+                        surface_sample,  # Sampled isosurface points
+                        vtk_data,        # Original volume data with vectors  
+                        vector_density=target_vector_points,
+                        arrow_scale=500.0  # Fixed size arrows for isosurface (500 km)
+                    )
+                    
+                    if vector_actors:
+                        actors.extend(vector_actors)
+                        print(f"Added {len(vector_actors)} vector arrows to isosurface")
+                    else:
+                        print("No vector arrows could be added to isosurface")
+        
+        return actors if len(actors) > 1 else actor
     
     def set_isosurface_style(self, style):
         """Set the isosurface style
@@ -1050,7 +1172,25 @@ class FluxFieldRenderer:
         prop.SetAmbient(0.2)
         prop.SetDiffuse(0.8)
         
-        return actor
+        # Check if vector data is available and add vector arrows to slice
+        actors = [actor]  # Start with slice plane actor
+        
+        has_vector_data = self.vector_glyph_renderer.has_vector_data(vtk_data)
+        if has_vector_data and self.vector_visualization_enabled:
+            print("Adding vector arrows to single slice plane")
+            vector_actors = self.vector_glyph_renderer.add_vectors_to_slice_plane(
+                slice_data,    # The probed slice data 
+                vtk_data,      # Original volume data with vectors
+                vector_density=30,  # Reduced for better performance
+                arrow_scale=1000.0  # Fixed scale for slice arrows (1000 km)
+            )
+            if vector_actors:
+                actors.extend(vector_actors)
+                print(f"Added {len(vector_actors)} vector arrow actors to single slice")
+            else:
+                print("No vector arrows could be added to single slice")
+        
+        return actors if len(actors) > 1 else actor
     
     def _create_three_plane_slice(self, vtk_data, color_lut, opacity):
         """Create three orthogonal slice planes
@@ -1108,6 +1248,35 @@ class FluxFieldRenderer:
             print(f"DEBUG: Created YZ plane actor")
         else:
             print(f"DEBUG: Failed to create YZ plane actor")
+        
+        # Add vector arrows to each plane if vector data is available
+        has_vector_data = self.vector_glyph_renderer.has_vector_data(vtk_data)
+        if has_vector_data and self.vector_visualization_enabled:
+            print("Adding vector arrows to three-plane slices")
+            
+            # We need to create slice data for each plane to add vectors
+            plane_configs = [
+                {"normal": [0, 0, 1], "pos_percent": z_pos / 100.0, "name": "XY"},
+                {"normal": [0, 1, 0], "pos_percent": y_pos / 100.0, "name": "XZ"}, 
+                {"normal": [1, 0, 0], "pos_percent": x_pos / 100.0, "name": "YZ"}
+            ]
+            
+            for plane_config in plane_configs:
+                # Create plane source for this configuration
+                slice_data = self._create_slice_data_for_vectors(
+                    vtk_data, bounds, plane_config["normal"], plane_config["pos_percent"]
+                )
+                
+                if slice_data:
+                    vector_actors = self.vector_glyph_renderer.add_vectors_to_slice_plane(
+                        slice_data,
+                        vtk_data,
+                        vector_density=20,  # Even fewer arrows for multiple planes
+                        arrow_scale=800.0   # Fixed size arrows (800 km)
+                    )
+                    if vector_actors:
+                        actors.extend(vector_actors)
+                        print(f"Added {len(vector_actors)} vector arrows to {plane_config['name']} plane")
         
         print(f"DEBUG: Total actors created: {len(actors)}")
         return actors
@@ -1275,6 +1444,63 @@ class FluxFieldRenderer:
               f"(data: {num_points:,} points)")
         
         return final_resolution
+    
+    def _create_slice_data_for_vectors(self, vtk_data, bounds, normal, position_percent):
+        """Create slice polydata for vector arrow placement
+        
+        Args:
+            vtk_data: Source VTK dataset
+            bounds: Data bounds
+            normal: Plane normal vector [x, y, z]
+            position_percent: Position along normal axis (0.0-1.0)
+            
+        Returns:
+            VTK polydata for the slice or None if failed
+        """
+        # Calculate plane origin based on normal direction
+        if normal[0] == 1:  # YZ plane
+            width = bounds[3] - bounds[2]   # Y extent
+            height = bounds[5] - bounds[4]  # Z extent
+            origin_coord = bounds[0] + position_percent * (bounds[1] - bounds[0])
+            
+            plane_source = vtk.vtkPlaneSource()
+            plane_source.SetOrigin(origin_coord, bounds[2], bounds[4])
+            plane_source.SetPoint1(origin_coord, bounds[3], bounds[4])
+            plane_source.SetPoint2(origin_coord, bounds[2], bounds[5])
+            
+        elif normal[1] == 1:  # XZ plane
+            width = bounds[1] - bounds[0]   # X extent
+            height = bounds[5] - bounds[4]  # Z extent
+            origin_coord = bounds[2] + position_percent * (bounds[3] - bounds[2])
+            
+            plane_source = vtk.vtkPlaneSource()
+            plane_source.SetOrigin(bounds[0], origin_coord, bounds[4])
+            plane_source.SetPoint1(bounds[1], origin_coord, bounds[4])
+            plane_source.SetPoint2(bounds[0], origin_coord, bounds[5])
+            
+        else:  # XY plane (normal[2] == 1)
+            width = bounds[1] - bounds[0]   # X extent
+            height = bounds[3] - bounds[2]  # Y extent
+            origin_coord = bounds[4] + position_percent * (bounds[5] - bounds[4])
+            
+            plane_source = vtk.vtkPlaneSource()
+            plane_source.SetOrigin(bounds[0], bounds[2], origin_coord)
+            plane_source.SetPoint1(bounds[1], bounds[2], origin_coord)
+            plane_source.SetPoint2(bounds[0], bounds[3], origin_coord)
+        
+        # Use moderate resolution for vector placement
+        resolution = 50  # Good balance of vector density vs performance
+        plane_source.SetXResolution(resolution)
+        plane_source.SetYResolution(resolution)
+        plane_source.Update()
+        
+        # Use probe filter to get data values at slice points
+        probe = vtk.vtkProbeFilter()
+        probe.SetInputData(plane_source.GetOutput())
+        probe.SetSourceData(vtk_data)
+        probe.Update()
+        
+        return probe.GetOutput()
     
     def set_slice_axis(self, axis):
         """Set the slice plane axis/orientation

@@ -19,6 +19,7 @@ class VisualizationPanel(QGroupBox):
     colormap_changed = pyqtSignal(str)
     scale_changed = pyqtSignal(str)
     opacity_changed = pyqtSignal(int)
+    vector_toggled = pyqtSignal(bool)
     settings_changed = pyqtSignal()
     
     def __init__(self, config, parent=None):
@@ -116,6 +117,17 @@ class VisualizationPanel(QGroupBox):
         opacity_layout.addWidget(self.opacity_label)
         opacity_row = self._create_aligned_row("Opacity", opacity_layout)
         common_layout.addLayout(opacity_row)
+        
+        # Vector visualization toggle
+        self.vector_checkbox = QCheckBox("Show vector arrows")
+        self.vector_checkbox.setChecked(True)  # Default enabled
+        self.vector_checkbox.stateChanged.connect(self._on_vector_toggled)
+        self.vector_checkbox.setToolTip(
+            "Show directional arrows when vector flux data is available.\n"
+            "Disabling this improves performance for large datasets."
+        )
+        vector_row = self._create_aligned_row("Vectors", self.vector_checkbox)
+        common_layout.addLayout(vector_row)
         
         self.dynamic_layout.addLayout(common_layout)
         
@@ -504,6 +516,11 @@ class VisualizationPanel(QGroupBox):
         self.opacity_label.setText(f"{value}%")
         self.opacity_changed.emit(value)
     
+    def _on_vector_toggled(self, state):
+        """Handle vector visualization toggle"""
+        enabled = bool(state)
+        self.vector_toggled.emit(enabled)
+    
     def _on_density_changed(self, value):
         """Handle density change"""
         self.density_label.setText(str(value))
@@ -634,6 +651,12 @@ class VisualizationPanel(QGroupBox):
         if hasattr(self, 'opacity_slider'):
             return self.opacity_slider.value()
         return 70
+    
+    def get_vector_enabled(self):
+        """Get whether vector visualization is enabled"""
+        if hasattr(self, 'vector_checkbox'):
+            return self.vector_checkbox.isChecked()
+        return True  # Default enabled
     
     def add_flux_file(self, file_path):
         """Add a flux file to the selector

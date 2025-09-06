@@ -566,6 +566,11 @@ class ElectronFluxVisualizerApp(QMainWindow):
         self.flux_field_renderer.set_visualization_mode(mode)
         self._update_visualization()
     
+    def _on_vector_toggled(self, enabled):
+        """Handle vector visualization toggle"""
+        self.flux_field_renderer.set_vector_visualization_enabled(enabled)
+        self._update_visualization()
+    
     def _on_colormap_changed(self):
         """Handle colormap change"""
         self._update_visualization()
@@ -615,6 +620,7 @@ class ElectronFluxVisualizerApp(QMainWindow):
         self.viz_panel.colormap_changed.connect(self._update_visualization)
         self.viz_panel.scale_changed.connect(self._update_visualization)
         self.viz_panel.opacity_changed.connect(self._update_visualization)
+        self.viz_panel.vector_toggled.connect(self._on_vector_toggled)
         self.viz_panel.settings_changed.connect(self._update_visualization)
         
         # Analysis panel
