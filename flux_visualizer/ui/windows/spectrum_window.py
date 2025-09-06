@@ -122,6 +122,66 @@ class EnergySpectrumWindow(BaseSpectrumWindow):
         self._initialize_axis_limits()
         
     
+    def _sample_flux_with_uncertainty(self, flux_data, x, y, z):
+        """
+        Sample flux and uncertainty values at a specific point.
+        
+        Args:
+            flux_data: VTK data object
+            x, y, z: Coordinates to sample
+            
+        Returns:
+            (flux_value, uncertainty_value) or (None, None) if sampling fails
+        """
+        from vtk import vtkProbeFilter
+        import vtk
+        from data_io import VTKDataLoader
+        
+        # Create probe filter
+        probe = vtkProbeFilter()
+        points = vtk.vtkPoints()
+        points.InsertNextPoint(x, y, z)
+        polydata = vtk.vtkPolyData()
+        polydata.SetPoints(points)
+        
+        probe.SetInputData(polydata)
+        probe.SetSourceData(flux_data)
+        probe.Update()
+        
+        result = probe.GetOutput()
+        if result.GetNumberOfPoints() == 0:
+            return None, None
+        
+        # Get flux value
+        scalar_array = result.GetPointData().GetScalars()
+        if not scalar_array or scalar_array.GetNumberOfTuples() == 0:
+            return None, None
+        
+        flux_value = scalar_array.GetValue(0)
+        
+        # Get uncertainty if available
+        uncertainty_value = None
+        flux_array_name = scalar_array.GetName()
+        
+        # Get uncertainty arrays for this flux
+        uncertainty_arrays = VTKDataLoader.get_uncertainty_arrays(flux_data, flux_array_name)
+        
+        if uncertainty_arrays['absolute']:
+            # Sample absolute uncertainty
+            unc_array_name = uncertainty_arrays['absolute'].GetName()
+            unc_array = result.GetPointData().GetArray(unc_array_name)
+            if unc_array and unc_array.GetNumberOfTuples() > 0:
+                uncertainty_value = unc_array.GetValue(0)
+        elif uncertainty_arrays['relative']:
+            # Sample relative uncertainty and convert to absolute
+            rel_unc_array_name = uncertainty_arrays['relative'].GetName()
+            rel_unc_array = result.GetPointData().GetArray(rel_unc_array_name)
+            if rel_unc_array and rel_unc_array.GetNumberOfTuples() > 0:
+                relative_uncertainty = rel_unc_array.GetValue(0)
+                uncertainty_value = flux_value * relative_uncertainty
+        
+        return flux_value, uncertainty_value
+    
     def set_energy_parameters(self, energy_range, energy_bins):
         """Set energy parameters from main analysis panel"""
         self.energy_range = energy_range
@@ -189,60 +249,61 @@ class EnergySpectrumWindow(BaseSpectrumWindow):
                 # Plot multiple flux sources with different colors and labels
                 for i, (flux_data, flux_type) in enumerate(zip(self.flux_data_list, self.flux_types)):
                     current_spectrum = spectrum.copy()  # Start with base spectrum
+                    flux_uncertainty = None
                     
-                    # Modify spectrum based on this flux data
+                    # Modify spectrum based on this flux data and get uncertainty
                     if hasattr(flux_data, 'GetPointData') and flux_data.GetPointData().GetScalars():
-                        # Sample flux at current position
-                        from vtk import vtkProbeFilter
-                        import vtk
+                        # Sample flux and uncertainty at current position
+                        flux_value, uncertainty_value = self._sample_flux_with_uncertainty(
+                            flux_data, current_point.x, current_point.y, current_point.z)
                         
-                        probe = vtkProbeFilter()
-                        points = vtk.vtkPoints()
-                        points.InsertNextPoint(current_point.x, current_point.y, current_point.z)
-                        polydata = vtk.vtkPolyData()
-                        polydata.SetPoints(points)
-                        
-                        probe.SetInputData(polydata)
-                        probe.SetSourceData(flux_data)
-                        probe.Update()
-                        
-                        result = probe.GetOutput()
-                        if result.GetNumberOfPoints() > 0:
-                            scalar_array = result.GetPointData().GetScalars()
-                            if scalar_array and scalar_array.GetNumberOfTuples() > 0:
-                                flux_value = scalar_array.GetValue(0)
-                                current_spectrum *= max(0.01, flux_value / 1e6)  # Scale spectrum by local flux
+                        if flux_value is not None:
+                            current_spectrum *= max(0.01, flux_value / 1e6)  # Scale spectrum by local flux
+                            
+                            if uncertainty_value is not None:
+                                # Calculate spectrum uncertainty
+                                flux_uncertainty = current_spectrum * (uncertainty_value / max(flux_value, 1e-10))
                     
-                    # Plot spectrum with unique color and label
+                    # Plot spectrum with error band if uncertainty available
                     color = colors[i % len(colors)]
                     ax.loglog(energies, current_spectrum, color=color, linewidth=2, 
                              label=f'{flux_type} (Alt: {altitude:.0f} km)')
+                    
+                    if flux_uncertainty is not None:
+                        # Add error band
+                        upper_bound = current_spectrum + flux_uncertainty
+                        lower_bound = np.maximum(current_spectrum - flux_uncertainty, 1e-10)  # Avoid negative values
+                        ax.fill_between(energies, lower_bound, upper_bound, 
+                                       color=color, alpha=0.2, label=f'{flux_type} ±1σ')
             else:
                 # Single flux source - backward compatibility
-                if hasattr(self.flux_data, 'GetPointData') and self.flux_data.GetPointData().GetScalars():
-                    # Sample flux at current position
-                    from vtk import vtkProbeFilter
-                    import vtk
-                    
-                    probe = vtkProbeFilter()
-                    points = vtk.vtkPoints()
-                    points.InsertNextPoint(current_point.x, current_point.y, current_point.z)
-                    polydata = vtk.vtkPolyData()
-                    polydata.SetPoints(points)
-                    
-                    probe.SetInputData(polydata)
-                    probe.SetSourceData(self.flux_data)
-                    probe.Update()
-                    
-                    result = probe.GetOutput()
-                    if result.GetNumberOfPoints() > 0:
-                        scalar_array = result.GetPointData().GetScalars()
-                        if scalar_array and scalar_array.GetNumberOfTuples() > 0:
-                            flux_value = scalar_array.GetValue(0)
-                            spectrum *= max(0.01, flux_value / 1e6)  # Scale spectrum by local flux
+                flux_uncertainty = None
                 
-                # Plot single spectrum
+                if hasattr(self.flux_data, 'GetPointData') and self.flux_data.GetPointData().GetScalars():
+                    # Sample flux and uncertainty at current position
+                    flux_value, uncertainty_value = self._sample_flux_with_uncertainty(
+                        self.flux_data, current_point.x, current_point.y, current_point.z)
+                    
+                    if flux_value is not None:
+                        spectrum *= max(0.01, flux_value / 1e6)  # Scale spectrum by local flux
+                        
+                        if uncertainty_value is not None:
+                            # Calculate spectrum uncertainty
+                            flux_uncertainty = spectrum * (uncertainty_value / max(flux_value, 1e-10))
+                
+                # Plot single spectrum with error band if uncertainty available
                 ax.loglog(energies, spectrum, 'b-', linewidth=2, label=f'Alt: {altitude:.0f} km')
+                
+                if flux_uncertainty is not None:
+                    # Add error band
+                    upper_bound = spectrum + flux_uncertainty
+                    lower_bound = np.maximum(spectrum - flux_uncertainty, 1e-10)  # Avoid negative values
+                    ax.fill_between(energies, lower_bound, upper_bound, 
+                                   color='blue', alpha=0.2, label='±1σ uncertainty')
+            
+            # Ensure log-log scaling for all plots
+            ax.set_xscale('log')
+            ax.set_yscale('log')
             ax.set_xlabel('Energy (keV)')
             ax.set_ylabel('Differential Flux (particles/cm²/s/keV)')
             

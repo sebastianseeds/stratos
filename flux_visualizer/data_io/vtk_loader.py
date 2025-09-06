@@ -187,7 +187,7 @@ class VTKDataLoader:
     @classmethod
     def _setup_scalar_data(cls, vtk_data: vtk.vtkDataObject) -> None:
         """
-        Setup and verify scalar data for visualization.
+        Setup and verify scalar data for visualization, including uncertainty data.
         
         Args:
             vtk_data: VTK data object
@@ -216,6 +216,184 @@ class VTKDataLoader:
                 point_data.SetScalars(first_array)
                 print(f"Set '{first_array.GetName()}' as primary scalars")
                 print(f"Scalar range: {first_array.GetRange()}")
+        
+        # Check for and report uncertainty data
+        cls._analyze_uncertainty_data(vtk_data)
+    
+    @classmethod
+    def _analyze_uncertainty_data(cls, vtk_data: vtk.vtkDataObject) -> None:
+        """
+        Analyze and report uncertainty data in the VTK dataset.
+        
+        Args:
+            vtk_data: VTK data object to analyze
+        """
+        point_data = vtk_data.GetPointData()
+        
+        print("\n--- Uncertainty Data Analysis ---")
+        
+        # Track uncertainty-related arrays
+        uncertainty_arrays = []
+        vector_arrays = []
+        flux_arrays = []
+        
+        for i in range(point_data.GetNumberOfArrays()):
+            array = point_data.GetArray(i)
+            array_name = array.GetName()
+            n_components = array.GetNumberOfComponents()
+            n_tuples = array.GetNumberOfTuples()
+            value_range = array.GetRange()
+            
+            # Categorize arrays
+            if 'uncertainty' in array_name.lower():
+                uncertainty_arrays.append({
+                    'name': array_name,
+                    'components': n_components,
+                    'tuples': n_tuples,
+                    'range': value_range,
+                    'type': 'vector' if n_components == 3 else 'scalar'
+                })
+            elif 'vector' in array_name.lower():
+                vector_arrays.append({
+                    'name': array_name,
+                    'components': n_components,
+                    'tuples': n_tuples,
+                    'range': value_range
+                })
+            elif 'flux' in array_name.lower():
+                flux_arrays.append({
+                    'name': array_name,
+                    'components': n_components,
+                    'tuples': n_tuples,
+                    'range': value_range,
+                    'type': 'vector' if n_components == 3 else 'scalar'
+                })
+        
+        # Report findings
+        print(f"Found {len(flux_arrays)} flux arrays:")
+        for flux in flux_arrays:
+            print(f"  • {flux['name']} ({flux['type']}) - Range: {flux['range'][0]:.2e} to {flux['range'][1]:.2e}")
+        
+        print(f"Found {len(uncertainty_arrays)} uncertainty arrays:")
+        for unc in uncertainty_arrays:
+            if unc['type'] == 'scalar':
+                print(f"  • {unc['name']} (absolute) - Range: {unc['range'][0]:.2e} to {unc['range'][1]:.2e}")
+            else:
+                print(f"  • {unc['name']} (vector) - Components: {unc['components']}")
+        
+        if vector_arrays:
+            print(f"Found {len(vector_arrays)} vector arrays:")
+            for vec in vector_arrays:
+                print(f"  • {vec['name']} - Components: {vec['components']}")
+        
+        # Check for uncertainty-flux pairs
+        print("\nUncertainty-Flux Pairings:")
+        for flux in flux_arrays:
+            flux_base = flux['name'].replace('_flux', '')
+            
+            # Look for corresponding uncertainty arrays
+            absolute_unc = f"{flux_base}_flux_uncertainty"
+            relative_unc = f"{flux_base}_flux_relative_uncertainty"
+            vector_unc = f"{flux_base}_flux_uncertainty_vector"
+            
+            has_abs = any(u['name'] == absolute_unc for u in uncertainty_arrays)
+            has_rel = any(u['name'] == relative_unc for u in uncertainty_arrays)  
+            has_vec = any(u['name'] == vector_unc for u in uncertainty_arrays)
+            
+            if has_abs or has_rel or has_vec:
+                print(f"  ✓ {flux['name']} has uncertainty data:")
+                if has_abs:
+                    abs_array = next(u for u in uncertainty_arrays if u['name'] == absolute_unc)
+                    print(f"    - Absolute: {abs_array['range'][0]:.2e} to {abs_array['range'][1]:.2e}")
+                if has_rel:
+                    rel_array = next(u for u in uncertainty_arrays if u['name'] == relative_unc)
+                    print(f"    - Relative: {rel_array['range'][0]*100:.1f}% to {rel_array['range'][1]*100:.1f}%")
+                if has_vec:
+                    print(f"    - Vector uncertainty: Available")
+            else:
+                print(f"  ✗ {flux['name']} has no uncertainty data")
+        
+        # Store uncertainty info in the VTK dataset for later access
+        field_data = vtk_data.GetFieldData()
+        if not field_data:
+            field_data = vtk.vtkFieldData()
+            vtk_data.SetFieldData(field_data)
+        
+        # Mark that uncertainty data has been analyzed
+        uncertainty_flag = vtk.vtkIntArray()
+        uncertainty_flag.SetName("has_uncertainty_data")
+        uncertainty_flag.SetNumberOfTuples(1)
+        uncertainty_flag.SetValue(0, 1 if uncertainty_arrays else 0)
+        field_data.AddArray(uncertainty_flag)
+        
+        print(f"\nUncertainty analysis complete. Dataset {'has' if uncertainty_arrays else 'does not have'} uncertainty data.")
+        print("--- End Uncertainty Analysis ---\n")
+    
+    @classmethod
+    def get_uncertainty_arrays(cls, vtk_data: vtk.vtkDataObject, flux_array_name: str) -> Dict[str, Optional[vtk.vtkDataArray]]:
+        """
+        Get uncertainty arrays associated with a specific flux array.
+        
+        Args:
+            vtk_data: VTK data object
+            flux_array_name: Name of the flux array
+            
+        Returns:
+            Dictionary with uncertainty arrays (absolute, relative, vector)
+        """
+        point_data = vtk_data.GetPointData()
+        
+        # Determine base name (remove _flux suffix if present)
+        flux_base = flux_array_name.replace('_flux', '') if flux_array_name.endswith('_flux') else flux_array_name
+        
+        # Look for uncertainty arrays
+        uncertainty_arrays = {
+            'absolute': None,
+            'relative': None,
+            'vector': None
+        }
+        
+        # Try different naming patterns
+        possible_names = {
+            'absolute': [f"{flux_base}_flux_uncertainty", f"{flux_base}_uncertainty", f"{flux_array_name}_uncertainty"],
+            'relative': [f"{flux_base}_flux_relative_uncertainty", f"{flux_base}_relative_uncertainty", f"{flux_array_name}_relative_uncertainty"],
+            'vector': [f"{flux_base}_flux_uncertainty_vector", f"{flux_base}_uncertainty_vector", f"{flux_array_name}_uncertainty_vector"]
+        }
+        
+        for unc_type, names in possible_names.items():
+            for name in names:
+                array = point_data.GetArray(name)
+                if array:
+                    uncertainty_arrays[unc_type] = array
+                    break
+        
+        return uncertainty_arrays
+    
+    @classmethod
+    def has_uncertainty_data(cls, vtk_data: vtk.vtkDataObject) -> bool:
+        """
+        Check if the VTK dataset contains uncertainty data.
+        
+        Args:
+            vtk_data: VTK data object
+            
+        Returns:
+            True if uncertainty data is present
+        """
+        field_data = vtk_data.GetFieldData()
+        if field_data:
+            uncertainty_flag = field_data.GetArray("has_uncertainty_data")
+            if uncertainty_flag:
+                return bool(uncertainty_flag.GetValue(0))
+        
+        # Fallback: check for uncertainty arrays directly
+        point_data = vtk_data.GetPointData()
+        for i in range(point_data.GetNumberOfArrays()):
+            array_name = point_data.GetArrayName(i)
+            if array_name and 'uncertainty' in array_name.lower():
+                return True
+        
+        return False
     
     @classmethod
     def get_file_filter(cls) -> str:

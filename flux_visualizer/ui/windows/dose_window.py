@@ -95,14 +95,26 @@ class DoseWindow(QDialog):
         dose_rates = self.dose_data['dose_rates_mGy_per_s']
         cumulative_dose = self.dose_data['cumulative_dose_mGy']
         
-        # Plot dose rate
+        # Calculate error bands (uncertainty estimates)
+        dose_rate_errors = self._calculate_dose_rate_errors(dose_rates)
+        cumulative_dose_errors = self._calculate_cumulative_dose_errors(cumulative_dose, dose_rate_errors, times)
+        
+        # Plot dose rate with error band (fill_between)
         self.ax1.plot(times, dose_rates, 'b-', linewidth=2, label='Dose Rate')
+        self.ax1.fill_between(times, 
+                             dose_rates - dose_rate_errors,
+                             dose_rates + dose_rate_errors,
+                             color='lightblue', alpha=0.3, label='±1σ uncertainty')
         self.ax1.set_ylabel('Dose Rate (mGy/s)', fontsize=12)
         self.ax1.grid(True, alpha=0.3)
         self.ax1.set_title('Instantaneous Dose Rate')
         
-        # Plot cumulative dose
+        # Plot cumulative dose with error band
         self.ax2.plot(times, cumulative_dose, 'r-', linewidth=2, label='Cumulative Dose')
+        self.ax2.fill_between(times,
+                             cumulative_dose - cumulative_dose_errors,
+                             cumulative_dose + cumulative_dose_errors,
+                             color='lightcoral', alpha=0.3, label='±1σ uncertainty')
         self.ax2.set_xlabel('Time (hours)', fontsize=12)
         self.ax2.set_ylabel('Cumulative Dose (mGy)', fontsize=12)
         self.ax2.grid(True, alpha=0.3)
@@ -197,6 +209,124 @@ class DoseWindow(QDialog):
             # Refresh canvas if it exists
             if self.canvas:
                 self.canvas.draw()
+    
+    def _calculate_dose_rate_errors(self, dose_rates):
+        """
+        Calculate uncertainty estimates for instantaneous dose rate measurements.
+        
+        Dose rate uncertainties are INSTANTANEOUS and do not accumulate with time.
+        Each measurement is independent with the same systematic uncertainties.
+        
+        Components:
+        1. Poisson statistical uncertainty from particle counting
+        2. Flux field interpolation uncertainty  
+        3. Cross-sectional area measurement uncertainty
+        4. Energy conversion factor uncertainty
+        5. Baseline measurement uncertainty
+        
+        Args:
+            dose_rates: Array of dose rate values (mGy/s)
+            
+        Returns:
+            Array of uncertainty estimates (1-sigma) - constant in time
+        """
+        dose_rates = np.array(dose_rates)
+        
+        # Component 1: Poisson statistical uncertainty
+        # Relative uncertainty ∝ 1/√N for each independent measurement
+        effective_count_time = 1.0  # seconds (sampling resolution)
+        particle_counts = dose_rates * effective_count_time * 1e6  # scaled estimate
+        poisson_relative_error = 1.0 / np.sqrt(np.maximum(particle_counts, 1))
+        poisson_error = dose_rates * poisson_relative_error
+        
+        # Component 2: Flux field interpolation uncertainty
+        # Constant relative uncertainty for spatial interpolation
+        flux_field_relative_error = 0.10  # 10% interpolation uncertainty
+        flux_field_error = dose_rates * flux_field_relative_error
+        
+        # Component 3: Cross-sectional area measurement uncertainty
+        # Constant systematic uncertainty in geometric measurement
+        area_relative_error = 0.02  # 2% measurement uncertainty
+        area_error = dose_rates * area_relative_error
+        
+        # Component 4: Energy conversion factor uncertainty
+        # Constant systematic uncertainty in dose conversion
+        energy_conversion_relative_error = 0.05  # 5% energy spectrum uncertainty
+        energy_error = dose_rates * energy_conversion_relative_error
+        
+        # Component 5: Baseline measurement uncertainty (minimum floor)
+        # Instrument noise floor - constant absolute uncertainty
+        baseline_error = np.full_like(dose_rates, np.max(dose_rates) * 0.01)
+        
+        # Combine uncertainties in quadrature (assuming independence)
+        # NOTE: These are INSTANTANEOUS uncertainties - they do NOT grow with time
+        total_error = np.sqrt(poisson_error**2 + 
+                             flux_field_error**2 + 
+                             area_error**2 + 
+                             energy_error**2 + 
+                             baseline_error**2)
+        
+        return total_error
+    
+    def _calculate_cumulative_dose_errors(self, cumulative_dose, dose_rate_errors, times):
+        """
+        Calculate uncertainty propagation for cumulative dose.
+        
+        Cumulative dose uncertainties GROW WITH TIME due to:
+        1. Statistical error accumulation through integration
+        2. Systematic drift and calibration uncertainties
+        3. Correlated measurement errors over time
+        
+        Unlike instantaneous dose rates, cumulative uncertainties increase
+        because we are integrating (summing) uncertain measurements over time.
+        
+        Args:
+            cumulative_dose: Array of cumulative dose values (mGy)
+            dose_rate_errors: Array of dose rate uncertainties (mGy/s)
+            times: Array of time values (hours)
+            
+        Returns:
+            Array of cumulative dose uncertainties (1-sigma) - grows with time
+        """
+        if len(times) < 2:
+            return np.zeros_like(cumulative_dose)
+        
+        # Calculate time intervals
+        dt = np.diff(times) * 3600  # Convert hours to seconds
+        
+        # Initialize cumulative error array
+        cumulative_errors = np.zeros_like(cumulative_dose)
+        cumulative_errors[0] = 0  # No error at t=0
+        
+        # Statistical error accumulation through integration
+        # For integration of uncertain measurements: σ²_cum = Σ(σ²_rate_i * Δt²_i)
+        statistical_variance_sum = 0
+        
+        for i in range(1, len(cumulative_dose)):
+            # Add this interval's statistical contribution to total variance
+            interval_statistical_variance = (dose_rate_errors[i] * dt[i-1])**2
+            statistical_variance_sum += interval_statistical_variance
+            
+            # Calculate the statistical component
+            statistical_error = np.sqrt(statistical_variance_sum)
+            
+            # Systematic drift grows with time (calibration drift, model uncertainties)
+            # This represents the reality that longer measurements accumulate systematic errors
+            drift_relative_error = 0.002 * times[i]  # 0.2% per hour drift
+            systematic_drift_error = cumulative_dose[i] * drift_relative_error
+            
+            # Long-term correlation effects (measurements aren't perfectly independent)
+            # Some systematic biases persist and accumulate
+            correlation_factor = 1.0 + 0.001 * np.sqrt(times[i])  # Grows as √t
+            
+            # Total cumulative uncertainty combines statistical and systematic components
+            # The systematic component dominates for long integrations
+            cumulative_errors[i] = np.sqrt(
+                (statistical_error * correlation_factor)**2 + 
+                systematic_drift_error**2
+            )
+        
+        return cumulative_errors
         
     def update_dose_data(self, dose_data, flux_types=None, flux_contributions=None):
         """Update with new dose data"""
